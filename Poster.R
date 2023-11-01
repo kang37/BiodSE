@@ -5,6 +5,7 @@
 library(openxlsx)
 library(dplyr)
 library(tidyr)
+library(psych)
 library(ggplot2)
 library(vegan)
 library(geosphere)
@@ -69,6 +70,9 @@ GetDiv <- function(x, x_comm, col.group) {
 # x: independent variable 
 # y: dependent variable
 GetCorrplot <- function(x, y) {
+  # Change colnames. 
+  colnames(x) <- x.name
+  colnames(y) <- y.name
   # 计算各列两两之间的相关性
   cor.res <- corr.test(x, y)
   # 作图表示相关性大小和是否显著，如果不显著的话，会以打叉表示
