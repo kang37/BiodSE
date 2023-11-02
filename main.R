@@ -1,22 +1,12 @@
 # Statement ----
-# 本代码用来分析京都市生物多样性和社会经济因素之间的关系
+# The relationship between biodiversity indexes and social economic variables, and land use variables. We are specifically interested in the environmental equity issue, e.g., if the vulnerable people is exposed to higher or lower biodiversity level. 
 
 # Package ---
-library(openxlsx)
-library(dplyr)
-library(tidyr)
-library(psych)
-library(ggplot2)
-library(vegan)
-library(geosphere)
-library(leaps)
-library(sf)
-library(terra)
-library(tmap)
-library(showtext)
+pacman::p_load(
+  openxlsx, dplyr, tidyr, psych, ggplot2, vegan, geosphere, leaps, sf, terra, 
+  tmap, showtext
+)
 showtext_auto()
-# if dir "ProcData" does not exist, create one
-if(!file.exists("ProcData")) dir.create("ProcData")
 
 # Function ----
 # function: get community data based on individual data
