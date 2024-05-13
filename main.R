@@ -306,6 +306,12 @@ qua_pop <- bind_rows(
 # nrow(filter(qua_pop, pop_src == "near_mesh"))
 # mapview(filter(qua_pop, pop_src == "near_mesh")) + 
 #   mapview(kyo_pop)
+# Bug: Why the sume of each part is not equal to total population? 
+# qua_pop %>% 
+#   mutate(tot_pop = pop0_14 + pop15_64 + pop65over) %>% 
+#   mutate(rate = tot_pop / popt) %>% 
+#   pull(rate) %>% 
+#   quantile()
 
 # Maps of population. 
 # tm_shape(qua_pop) + 
@@ -428,4 +434,45 @@ qua_bd_var %>%
   geom_point() + 
   geom_smooth(method = "lm") +
   facet_grid(index ~ factor, scales = "free")
+
+## Best model ----
+# Function to get the best model based on AIC. 
+eval_model <- function(response_var, explain_var) {
+  regsubsets(
+    paste(explain_var, collapse = " + ") %>% 
+      paste0(response_var, " ~ ", .) %>% 
+      as.formula(), 
+    data = qua_bd_var
+  ) %>% 
+    see_models(aicc = TRUE, report = 5)
+}
+eval_model_all_explain <- function(response_var) {
+  lapply(
+    list(
+      land_cover_var, pop_var, 
+      c(land_cover_var, "price"), c(pop_var, "price"), 
+      c(land_cover_var, pop_var, "price")
+    ), 
+    function(x) eval_model(response_var, x)
+  )
+}
+
+lapply(bd_index, eval_model_all_explain)
+
+# Rearrange and analyze the results, and get the best model: the model with most variables (to explain the effects of the variables) in the top 3 models. 
+# Best model for tree abundance ~ land variables. 
+summary(lm(tree_abundance ~ residential + park + other, data = qua_bd_var))
+# Best model for tree abundance ~ pop variables. 
+# Bug: The model with most variable - the variables are not significant. 
+summary(lm(tree_abundance ~ pop85over_prop, data = qua_bd_var))
+# Best model for tree abundance ~ all variables. 
+summary(lm(tree_abundance ~ park + other + pop0_14_prop + pop85over_prop + price, data = qua_bd_var))
+
+# Best model for tree abundance ~ land variables. 
+summary(lm(tree_richness ~ residential + park + other, data = qua_bd_var))
+# Best model for tree abundance ~ pop variables. 
+# Bug: The model with most variable - the variables are not significant. 
+summary(lm(tree_richness ~ pop0_14_prop + pop65over_prop + pop85over_prop, data = qua_bd_var))
+# Best model for tree abundance ~ all variables. 
+summary(lm(tree_richness ~ agriculture + pop0_14_prop + pop85over_prop + price, data = qua_bd_var))
 
