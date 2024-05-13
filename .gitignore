@@ -3,4 +3,5 @@
 .RData
 .Ruserdata
 .DS_Store
-File/
+file/
+data_raw/

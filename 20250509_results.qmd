@@ -1,0 +1,129 @@
+---
+title: "土地利用、生物多样性和环境公平"
+author: "康杰锋"
+format: html
+editor: visual
+editor_options: 
+  chunk_output_type: console
+---
+
+## 引言
+
+本文主要是关于土地利用、社会经济因子和生物多样性的关系，要讨论的主要问题是环境公平。
+
+在先行研究中，除了土地利用等景观要素与生物多样性的关系，还有很多研究聚焦社会经济要素和生物多样性的关系。后者的结果表明，在很多城市中，存在\"luxury effect\"，其实就是环境不平等在生物多样性方面的体现：收入越高的居住区，往往生物多样性也越高。但是这个结果可能因城市设计、人们的居住选择、文化而有所不同。本文综合了**景观要素和社会经济要素**，探究城市生物多样性的成因或后果。
+
+本研究的响应变量为各种生物多样性指标，包括：乔木的abundance、richness、Shannon指数、Simpson指数、evenness，灌木的abundance、richness、Shannon指数、Simpson指数、evenness，乔木灌木合起来的richness。
+
+解释变量包括：（1）景观变量，为样地中各类土地覆盖的百分比，包括居住用地、交通用地、农业用地、公园、公共机构等等；（2）社会变量，为人口结构，包括0-14岁、15-64岁、65岁以上、75岁以上、85岁以上人口占比；（3）经济变量，采用了地价。
+
+我先用皮尔森相关简单看了各个响应变量和各解释变量的关系，然后对每一个相应变量～解释变量组都构建了模型，筛选出最佳回归模型。
+
+## 相关分析
+
+从下面的相关图可以看出，各个解释变量对各响应变量的效应比较一致。例如，居住用地比例对灌木richness/Shannon/Simpson以及乔灌木richness都是正效应，也就是说在不考虑其他解释变量的情况下，样地中居住用地比例越大，灌木richness/Shannon/Simpson以及乔灌木总richness就越高。而park主要对乔木abundance和灌木abundance起显著正效应，这也很容易解释，因为公园里种的植物通常比较多（所以abundance高），但是种类不一定多。pop15_64_prop则主要对乔木各项指标起负效应，也就是说15-64岁人口比例高的地方，乔木的多样性比较低。我们关注的一个重点，小孩和老人的情况则是：0-14岁人口比例高的地方，乔灌木总richness比较高，这是件好事，意味着小朋友们能够接触到的植物种类较多，而高龄者相关的几个解释变量（65岁以上/75岁以上/85岁以上人口占比）和多样性的其中几个指标都是正相关，这两点说明京都市的生物多样性环境对小孩和老人都比较友好。至于地价，出乎意料的是，虽然不显著，但是表现出了负效应，也就是说是一种反luxury effect：地价高的地方反而生物多样性低。
+
+```{r}
+GetCorrplot(
+  st_drop_geometry(qua_bd_var)[bd_index], 
+  st_drop_geometry(qua_bd_var)[c(land_cover_var, pop_var, "price")] %>% 
+    # Bug: Revemo multi-family-resi for now. 
+    select(-multi_family_residential)
+)
+```
+
+当然，也可以直观地查看这些变量之间的关系：
+
+```{r}
+qua_bd_var %>% 
+  select(qua_id, all_of(bd_index), price, all_of(pop_var)) %>% 
+  pivot_longer(cols = c("price", pop_var), 
+               names_to = "factor", values_to = "factor_value") %>% 
+  pivot_longer(cols = bd_index, 
+               names_to = "index", values_to = "index_value") %>% 
+  ggplot(aes(factor_value, index_value)) + 
+  geom_point() + 
+  geom_smooth(method = "lm") +
+  facet_grid(index ~ factor, scales = "free")
+```
+
+## 回归模型
+
+当然，相关分析仅考虑了一对变量之间的关系，而没有考虑其他变量的影响，因此我们还需要做回归分析。
+
+回归分析的首要问题是如何选入变量。在本研究中，我们有3组解释变量：景观，人口，经济。我们通过全子集方法来选入变量：对于给定的几个解释变量，检测所有模型，例如对于3个解释变量，我们可以构建以下几种可能模型形式：
+
+只包含一个解释变量：y \~ x1；y \~ x2；y \~ x3；
+
+包含两个解释变量：y \~ x1 + x2；y \~ x1 + x3；y \~ x2 + x3；
+
+包含三个解释变量：y \~ x1 + x2 + x3。
+
+对于每个模型，有一个AIC值，AIC值和模型解释变量数量以及模型的拟合程度有关。简单来说，解释变量越少，拟合程度越高，则AIC越小。所以我们通常认为AIC越小，模型越好。但是如果最终选出的\"最佳模型\"只有一个解释变量，对于我们要探究的问题可能又没多大意义，因此也会折中一下，选择AIC较小，但是又包含感兴趣的解释变量的模型。
+
+那么，我就对每个响应变量（如乔木的richness）和以下几组解释变量建立配对：
+
+乔木的richness ～ 景观变量组；
+
+乔木的richness ～ 人口变量组；
+
+乔木的richness ～ 景观变量 + 地价；
+
+乔木的richness ～ 人口变量 + 地价；
+
+乔木的richness ～ 景观变量 + 人口变量 + 地价。
+
+对于每个配对，都采用了上面说的全子集回归方法，筛选出AIC最小的5个模型。例如，对于\"乔木的richness ～ 景观变量组\"这个配对，最好的5个模型是：
+
+![](images/Picture1.png)
+
+而对于\"乔木的richness ～ 人口变量组\"这个配对，最佳模型是（因为模型包含的解释变量太长，所以换行了）：
+
+![](images/Picture1-01.png)
+
+对比上面两个例子，我们还可以看出，选取人口变量的模型表现普遍比选入景观变量的模型好。
+
+我们总共有11个响应变量（乔木多样性指数、灌木多样性指数、乔灌木richness），而对于每个响应变量都有5个配对，对于每个配对都有5个最佳模型，因此最后出来的模型数量就非常可观：
+
+![](images/WX20240513-224538@2x.png)
+
+这部分我需要通过电话跟你详细讨论。但是先贴上这些结果：
+
+```{r}
+lapply(bd_index, eval_model_all_explain)
+```
+
+## 附录
+
+采样地点分布：
+
+```{r}
+tm_shape(kyo_built) + 
+  tm_fill(col = "grey") + 
+  tm_shape(qua_position, bbox = map_bbox) + 
+  tm_symbols(size = 0.1, col = "red") +
+  tm_compass(position = c("left", "top")) +
+  tm_scale_bar()
+```
+
+人口：展示0-14岁和85岁以上人口数量（不是人口占比）分布：
+
+```{r}
+tm_shape(kyo_built) + 
+  tm_polygons(alpha = 0.3) + 
+  tm_shape(kyo_pop) + 
+  tm_polygons(col = "pop0_14", border.alpha = 0, style = "kmeans")
+tm_shape(kyo_built) + 
+  tm_polygons(alpha = 0.3) + 
+  tm_shape(kyo_pop) + 
+  tm_polygons(col = "pop85over", border.alpha = 0, style = "kmeans") 
+```
+
+地价的分布：
+
+```{r}
+tm_shape(kyo_built) +
+  tm_polygons(alpha = 0.3) +
+  tm_shape(land_price) +
+  tm_dots(col = "price", border.alpha = 0, style = "kmeans")
+```

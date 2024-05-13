@@ -259,35 +259,35 @@ kyo_pop <-
 
 # Check distribution of young and elder. 
 library(tmap)
-tm_shape(kyo_pop) + 
-  tm_polygons(col = "pop0_14", border.alpha = 0, style = "kmeans") + 
-  tm_shape(kyo_built) + 
-  tm_polygons(alpha = 0.3)
-tm_shape(kyo_pop) + 
-  tm_polygons(col = "pop65over", border.alpha = 0, style = "kmeans") + 
-  tm_shape(kyo_built) + 
-  tm_polygons(alpha = 0.3)
-tm_shape(kyo_pop) + 
-  tm_polygons(col = "pop75over", border.alpha = 0, style = "kmeans") + 
-  tm_shape(kyo_built) + 
-  tm_polygons(alpha = 0.3)
-tm_shape(kyo_pop) + 
-  tm_polygons(col = "pop85over", border.alpha = 0, style = "kmeans") + 
-  tm_shape(kyo_built) + 
-  tm_polygons(alpha = 0.3)
+tm_shape(kyo_built) + 
+  tm_polygons(alpha = 0.3) + 
+  tm_shape(kyo_pop) + 
+  tm_polygons(col = "pop0_14", border.alpha = 0, style = "kmeans")
+tm_shape(kyo_built) + 
+  tm_polygons(alpha = 0.3) + 
+  tm_shape(kyo_pop) + 
+  tm_polygons(col = "pop65over", border.alpha = 0, style = "kmeans")
+tm_shape(kyo_built) + 
+  tm_polygons(alpha = 0.3) + 
+  tm_shape(kyo_pop) + 
+  tm_polygons(col = "pop75over", border.alpha = 0, style = "kmeans") 
+tm_shape(kyo_built) + 
+  tm_polygons(alpha = 0.3) + 
+  tm_shape(kyo_pop) + 
+  tm_polygons(col = "pop85over", border.alpha = 0, style = "kmeans") 
 
 # Get population of the quadrats. 
-qua_pop <- st_join(qua_position, kyo_pop)
+qua_pop_gis <- st_join(qua_position, kyo_pop)
 # Get pop value of the closest mesh to those points. 
-qua_pop <- bind_rows(
-  filter(qua_pop, !is.na(pop75over)) %>% 
+qua_pop_gis <- bind_rows(
+  filter(qua_pop_gis, !is.na(pop75over)) %>% 
     mutate(pop_src = "in_mesh"), 
   cbind(
-    filter(qua_pop, is.na(pop75over)) %>% 
+    filter(qua_pop_gis, is.na(pop75over)) %>% 
       select(qua_id, geometry), 
     kyo_pop %>% 
       st_drop_geometry() %>% 
-      .[st_nearest_feature(filter(qua_pop, is.na(pop75over)), kyo_pop), ] %>% 
+      .[st_nearest_feature(filter(qua_pop_gis, is.na(pop75over)), kyo_pop), ] %>% 
       mutate(pop_src = "near_mesh")
   )
 ) %>% 
@@ -303,18 +303,18 @@ qua_pop <- bind_rows(
     c(pop0_14, pop15_64, pop65over, pop75over, pop85over), list(prop = ~./popt)
   ))
 # How many points do not get pop value and where are they? 
-# nrow(filter(qua_pop, pop_src == "near_mesh"))
-# mapview(filter(qua_pop, pop_src == "near_mesh")) + 
+# nrow(filter(qua_pop_gis, pop_src == "near_mesh"))
+# mapview(filter(qua_pop_gis, pop_src == "near_mesh")) + 
 #   mapview(kyo_pop)
 # Bug: Why the sume of each part is not equal to total population? 
-# qua_pop %>% 
+# qua_pop_gis %>% 
 #   mutate(tot_pop = pop0_14 + pop15_64 + pop65over) %>% 
 #   mutate(rate = tot_pop / popt) %>% 
 #   pull(rate) %>% 
 #   quantile()
 
 # Maps of population. 
-# tm_shape(qua_pop) + 
+# tm_shape(qua_pop_gis) + 
 #   tm_dots(col = "pop75over", border.alpha = 0, style = "kmeans") + 
 #   tm_shape(kyo_built) + 
 #   tm_polygons(alpha = 0.3)
@@ -381,18 +381,18 @@ qua_bd_var <- qua_position %>%
 png("ProcData/Map_quadrat.png", width = 1500, height = 1500, res = 300)
 tm_shape(kyo_built) + 
   tm_fill(col = "grey") + 
-  tm_shape(qua_shp, bbox = map_bbox) + 
+  tm_shape(qua_position, bbox = map_bbox) + 
   tm_symbols(size = 0.1, col = "red") +
   tm_compass(position = c("left", "top")) +
   tm_scale_bar()
 dev.off()
 
-# plot for population structure: exmaple of age > 75
+# plot for population structure: example of age > 75
 png("ProcData/Map_prop_age_75_up.png", width = 1500, height = 1500, res = 300)
 tm_shape(kyo_built) + 
   tm_fill(col = "white") + 
-  tm_shape(pop.mesh, bbox = map_bbox) + 
-  tm_fill(col = "PopT75upR", style = "quantile") + 
+  tm_shape(kyo_pop, bbox = map_bbox) + 
+  tm_fill(col = "pop75over", style = "quantile") + 
   tm_layout(legend.outside = TRUE)
 dev.off()
 
@@ -411,7 +411,7 @@ dev.off()
 # 统计分析部分 
 # 分析各个生物多样性指标和社会经济因素之间的关系
 png("ProcData/Cor_pairwise.png", width = 3000, height = 1500, res = 300)
-qua_pop <- st_drop_geometry(qua_pop)
+qua_pop <- st_drop_geometry(qua_pop_gis)
 GetCorrplot(
   st_drop_geometry(qua_bd_var)[bd_index], 
   st_drop_geometry(qua_bd_var)[c(land_cover_var, pop_var, "price")] %>% 
