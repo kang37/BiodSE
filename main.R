@@ -30,13 +30,12 @@ GetDiv <- function(x, x_comm, col.group) {
   }
   
   output <- x_comm %>%
-    mutate(abundance = rowSums(.[3:ncol(.)]),
-           richness = apply(.[2:ncol(.)]>0, 1, sum),
-           shannon = diversity(.[2:ncol(.)], index = "shannon"),
-           simpson = diversity(.[2:ncol(.)], index = "simpson"),
-           evenness = shannon / log(richness)) %>%
-    select({{col.group}}, 
-           abundance, richness, shannon, simpson, evenness)
+    mutate(
+      abundance = rowSums(.[3:ncol(.)]),
+      richness = apply(.[2:ncol(.)]>0, 1, sum),
+      shannon = diversity(.[2:ncol(.)], index = "shannon")
+    ) %>%
+    select({{col.group}}, abundance, richness, shannon)
   
   return(output)
 }
@@ -99,9 +98,7 @@ LmRes2Df <- function(x) {
 ## Constant ----
 bd_index <- c(
   "tree_abundance", "tree_richness", "tree_shannon", 
-  "tree_simpson", "tree_evenness", 
   "shrub_abundance", "shrub_richness", "shrub_shannon", 
-  "shrub_simpson", "shrub_evenness", 
   "all_richness"
 )
 
@@ -142,7 +139,9 @@ qua_bd_tree <- indv_tree %>%
   # Calculate biodiversity. 
   GetDiv(x = indv_tree, x_comm = ., col.group = qua_id) %>% 
   # Rename diversity names. 
-  rename_with(.cols = {{bd_index}}, .fn = ~ paste0("tree_", .))
+  rename_with(
+    .cols = c(abundance, richness, shannon), .fn = ~ paste0("tree_", .)
+  )
 
 # Biodiversity of shrubs. 
 indv_shrub <- 
@@ -157,15 +156,13 @@ shrub_comm <- indv_shrub %>%
   pivot_wider(
     names_from = species, values_from = area, values_fn = sum, values_fill = 0
   ) 
-qua_bd_shrub <- 
-  shrub_comm %>%
-  mutate(abundance = rowSums(.[2:ncol(.)]),
-         richness = apply(.[2:ncol(.)] > 0, 1, sum),
-         shannon = diversity(.[2:ncol(.)], index = "shannon"),
-         simpson = diversity(.[2:ncol(.)], index = "simpson"),
-         evenness = shannon / log(richness)) %>% 
-  select(qua_id, {{bd_index}}) %>% 
-  rename_with(.cols = {{bd_index}}, .fn = ~ paste0("shrub_", .))
+qua_bd_shrub <- shrub_comm %>%
+  # Calculate biodiversity. 
+  GetDiv(x = indv_tree, x_comm = ., col.group = qua_id) %>% 
+  # Rename diversity names. 
+  rename_with(
+    .cols = c(abundance, richness, shannon), .fn = ~ paste0("shrub_", .)
+  )
 
 # Richness of quadrats of all plants.
 qua_bd <- 
@@ -182,6 +179,9 @@ qua_bd <-
     function(x, y) full_join(x, y, by = "qua_id"), 
     list(qua_bd_tree, qua_bd_shrub, qua_bd)
   )
+
+# JGD2011 / Japan Plane Rectangular CS zone VI (EPSG:6668), the more current and updated CRS using the JGD2011 datum.
+my_crs <- 6668
 
 # Quadrat position. 
 qua_position <- 
@@ -248,7 +248,8 @@ kyo_pop <-
   st_read(
     "data_raw/100m_mesh_pop2020_26100", "100m_mesh_pop2020_26100京都市"
   ) %>% 
-  rename_with(~tolower(.x))
+  rename_with(~tolower(.x)) %>% 
+  st_transform(my_crs)
 # If want to keep mesh within built up area. 
 # kyo_pop %>% 
 #   mutate(within_built = as.numeric(st_within(., kyo_built))) %>% 
@@ -256,25 +257,6 @@ kyo_pop <-
 # Bug: Why the meshes have different area? 
 # Test area: 
 # hist(st_area(kyo_pop))
-
-# Check distribution of young and elder. 
-library(tmap)
-tm_shape(kyo_built) + 
-  tm_polygons(alpha = 0.3) + 
-  tm_shape(kyo_pop) + 
-  tm_polygons(col = "pop0_14", border.alpha = 0, style = "kmeans")
-tm_shape(kyo_built) + 
-  tm_polygons(alpha = 0.3) + 
-  tm_shape(kyo_pop) + 
-  tm_polygons(col = "pop65over", border.alpha = 0, style = "kmeans")
-tm_shape(kyo_built) + 
-  tm_polygons(alpha = 0.3) + 
-  tm_shape(kyo_pop) + 
-  tm_polygons(col = "pop75over", border.alpha = 0, style = "kmeans") 
-tm_shape(kyo_built) + 
-  tm_polygons(alpha = 0.3) + 
-  tm_shape(kyo_pop) + 
-  tm_polygons(col = "pop85over", border.alpha = 0, style = "kmeans") 
 
 # Get population of the quadrats. 
 qua_pop_gis <- st_join(qua_position, kyo_pop)
@@ -313,23 +295,8 @@ qua_pop_gis <- bind_rows(
 #   pull(rate) %>% 
 #   quantile()
 
-# Maps of population. 
-# tm_shape(qua_pop_gis) + 
-#   tm_dots(col = "pop75over", border.alpha = 0, style = "kmeans") + 
-#   tm_shape(kyo_built) + 
-#   tm_polygons(alpha = 0.3)
-# tm_shape(kyo_built) + 
-#   tm_polygons(alpha = 0.3) + 
-#   tm_shape(land_price) + 
-#   tm_dots(col = "price", border.alpha = 0, style = "kmeans")
-# tm_shape(qua_position) + 
-#   tm_dots(col = "green") + 
-#   tm_shape(land_price_2020) + 
-#   tm_dots(col = "price", border.alpha = 0, style = "kmeans")
-
 ## GIS data ----
 # 读取京都市建成区边界
-my_crs <- 4612
 kyo_built <- 
   st_read("data_raw/Kyoto_built_up_boundary/Kyoto_built_up_boundary.shp") %>% 
   st_transform(my_crs) %>% 
@@ -337,7 +304,8 @@ kyo_built <-
 # 读取地价数据
 land_price <- st_read("data_raw/LandPrice/L01-19_26_GML/L01-19_26.shp") %>% 
   select(price = L01_006) %>% 
-  mutate(price = as.numeric(price)) 
+  mutate(price = as.numeric(price)) %>% 
+  st_transform(my_crs)
 # bug: 如何提取各个样地的社会经济因子呢？
 
 # Get price of quadrats from closest price investigation points. 
@@ -372,13 +340,13 @@ qua_bd_var <- qua_position %>%
   left_join(qua_bd, by = "qua_id") %>% 
   left_join(qua_land_cover, by = "qua_id") %>% 
   # Bug: Make qua_pop and qua_price as general data.frame. 
-  left_join(st_drop_geometry(qua_pop), by = "qua_id") %>% 
+  left_join(st_drop_geometry(qua_pop_gis), by = "qua_id") %>% 
   left_join(st_drop_geometry(qua_price), by = "qua_id")
 
 # Analysis ----
 ## Maps for factors ----
 # 作图：样点分布
-png("ProcData/Map_quadrat.png", width = 1500, height = 1500, res = 300)
+png("data_proc/map_quadrat.png", width = 1500, height = 1500, res = 300)
 tm_shape(kyo_built) + 
   tm_fill(col = "grey") + 
   tm_shape(qua_position, bbox = map_bbox) + 
@@ -388,7 +356,7 @@ tm_shape(kyo_built) +
 dev.off()
 
 # plot for population structure: example of age > 75
-png("ProcData/Map_prop_age_75_up.png", width = 1500, height = 1500, res = 300)
+png("data_proc/map_prop_age_75_up.png", width = 1500, height = 1500, res = 300)
 tm_shape(kyo_built) + 
   tm_fill(col = "white") + 
   tm_shape(kyo_pop, bbox = map_bbox) + 
@@ -398,19 +366,37 @@ dev.off()
 
 # 地价图
 # bug: 有超出京都市建成区边界的点
-png("ProcData/Map_land_price.png", width = 1500, height = 1500, res = 300)
+png("data_proc/map_land_price.png", width = 1500, height = 1500, res = 300)
 tm_shape(kyo_built) + 
   tm_fill(col = "grey") + 
   tm_shape(land_price, bbox = map_bbox) + 
-  tm_symbols(col = "L01_006", size = 0.1, style = "quantile") +
+  tm_symbols(col = "price", size = 0.1, style = "quantile") +
   tm_layout(legend.outside = TRUE) + 
   tmap_options(check.and.fix = TRUE)
 dev.off()
 
+# Check distribution of young and elder. 
+tm_shape(kyo_built) + 
+  tm_polygons(alpha = 0.3) + 
+  tm_shape(kyo_pop) + 
+  tm_polygons(col = "pop0_14", border.alpha = 0, style = "kmeans")
+tm_shape(kyo_built) + 
+  tm_polygons(alpha = 0.3) + 
+  tm_shape(kyo_pop) + 
+  tm_polygons(col = "pop65over", border.alpha = 0, style = "kmeans")
+tm_shape(kyo_built) + 
+  tm_polygons(alpha = 0.3) + 
+  tm_shape(kyo_pop) + 
+  tm_polygons(col = "pop75over", border.alpha = 0, style = "kmeans") 
+tm_shape(kyo_built) + 
+  tm_polygons(alpha = 0.3) + 
+  tm_shape(kyo_pop) + 
+  tm_polygons(col = "pop85over", border.alpha = 0, style = "kmeans") 
+
 ## Biod indexes ~ factors ----
 # 统计分析部分 
 # 分析各个生物多样性指标和社会经济因素之间的关系
-png("ProcData/Cor_pairwise.png", width = 3000, height = 1500, res = 300)
+png("data_proc/Cor_pairwise.png", width = 3000, height = 1500, res = 300)
 qua_pop <- st_drop_geometry(qua_pop_gis)
 GetCorrplot(
   st_drop_geometry(qua_bd_var)[bd_index], 
@@ -431,33 +417,54 @@ qua_bd_var %>%
   pivot_longer(cols = bd_index, 
                names_to = "index", values_to = "index_value") %>% 
   ggplot(aes(factor_value, index_value)) + 
-  geom_point() + 
-  geom_smooth(method = "lm") +
-  facet_grid(index ~ factor, scales = "free")
+  geom_point(alpha = 0.5) + 
+  geom_smooth(method = "lm", formula = "y ~ x") +
+  facet_grid(index ~ factor, scales = "free") + 
+  theme_bw()
 
 ## Best model ----
 # Function to get the best model based on AIC. 
 eval_model <- function(response_var, explain_var) {
-  regsubsets(
-    paste(explain_var, collapse = " + ") %>% 
+  if(length(explain_var) == 1) {
+    my_formula <- paste0(response_var, " ~ ", explain_var) %>% 
+      as.formula()
+    lm(my_formula, data = qua_bd_var) %>% 
+      summary() %>% 
+      return()
+  } else {
+    my_formula <- paste(explain_var, collapse = " + ") %>% 
       paste0(response_var, " ~ ", .) %>% 
-      as.formula(), 
-    data = qua_bd_var
-  ) %>% 
-    see_models(aicc = TRUE, report = 5)
+      as.formula()
+    regsubsets(my_formula, data = qua_bd_var) %>% 
+      see_models(aicc = TRUE, report = 5) %>% 
+      return()
+  }
 }
 eval_model_all_explain <- function(response_var) {
   lapply(
     list(
-      land_cover_var, pop_var, 
-      c(land_cover_var, "price"), c(pop_var, "price"), 
+      # One type of factors. 
+      land_cover_var, pop_var, "price", 
+      # Two types of factors. 
+      c(land_cover_var, pop_var), c(land_cover_var, "price"), 
+      c(pop_var, "price"), 
+      # All factors. 
       c(land_cover_var, pop_var, "price")
     ), 
     function(x) eval_model(response_var, x)
   )
 }
 
-lapply(bd_index, eval_model_all_explain)
+# Loop variable pairs: response var - (tree + shrub) * biod index, explain var - land cover + pop + price and their interactions. 
+reg_res <- lapply(bd_index, eval_model_all_explain) %>% 
+  setNames(bd_index) %>% 
+  lapply(., function(x) {
+    setNames(x, c(
+      "land_cover", "pop", "price", 
+      "land_cover + pop", "land_cover + price", "pop + price", 
+      "land_cover + pop + price"
+    ))
+  })
 
 # Rearrange and analyze the results, and get the best model: the model with most variables (to explain the effects of the variables) in the top 3 models. 
 # Best model for tree abundance ~ land variables. 
