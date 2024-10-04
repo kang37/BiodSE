@@ -386,10 +386,7 @@ eval_model_all_explain <- function(response_var) {
   lapply(
     list(
       # One type of factors. 
-      land_cover_var, pop_var, "price", 
-      # Two types of factors. 
-      c(land_cover_var, pop_var), c(land_cover_var, "price"), 
-      c(pop_var, "price"), 
+      land_cover_var, pop_var, 
       # All factors. 
       c(land_cover_var, pop_var, "price")
     ), 
@@ -402,8 +399,7 @@ reg_res <- lapply(bd_index, eval_model_all_explain) %>%
   setNames(bd_index) %>% 
   lapply(., function(x) {
     setNames(x, c(
-      "land_cover", "pop", "price", 
-      "land_cover + pop", "land_cover + price", "pop + price", 
+      "land_cover", "pop", 
       "land_cover + pop + price"
     ))
   })
