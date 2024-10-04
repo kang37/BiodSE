@@ -1,6 +1,5 @@
 # Statement ----
 # The relationship between biodiversity indexes and social economic variables, and land use classes. We are specifically interested in the environmental equity issue, e.g., if the vulnerable people is exposed to higher or lower biodiversity level. 
-
 # Package ---
 pacman::p_load(
   openxlsx, dplyr, tidyr, psych, ggplot2, vegan, geosphere, leaps, sf, terra, 
@@ -66,7 +65,7 @@ GetRegSubset <- function(x, var_response) {
   plot(leaps, scale = "adjr2", main = var_response)
 }
 
-# Function: trun lm() result into data.frame. 
+# Function: turn lm() result into data.frame. 
 # Argument: 
 # x: result of lm()
 LmRes2Df <- function(x) {
@@ -98,8 +97,7 @@ LmRes2Df <- function(x) {
 ## Constant ----
 bd_index <- c(
   "tree_abundance", "tree_richness", "tree_shannon", 
-  "shrub_abundance", "shrub_richness", "shrub_shannon", 
-  "all_richness"
+  "shrub_abundance", "shrub_richness", "shrub_shannon"
 )
 
 pop_var <- c(
@@ -113,10 +111,7 @@ ward <- c(
 )
 
 # Bug: 是否要仅保留在各个样方中均比较普遍的土地覆盖类型呢？但是如果那样做了，就只剩下residential和transportation两种了。在后期可以考虑在样方周围一定缓冲区内，计算土地利用或覆盖（但是数据不如现场调查那么精确）比例或景观指数和样方内的多样性指数之间的关系？
-land_cover_var <- c(
-  "residential", "transportation", "multi_family_residential", "agriculture",
-  "park", "institutional", "other"
-)
+land_cover_var <- unique(land_cover$land_cover)
 
 # 作图范围
 map_bbox <- c(135.62, 34.90, 135.839, 35.079)
@@ -165,20 +160,7 @@ qua_bd_shrub <- shrub_comm %>%
   )
 
 # Richness of quadrats of all plants.
-qua_bd <- 
-  rbind(
-    select(indv_tree, qua_id, species), 
-    select(indv_shrub, qua_id, species)
-  ) %>% 
-  distinct() %>% 
-  group_by(qua_id) %>% 
-  summarise(richness = n()) %>% 
-  rename(all_richness = richness)
-qua_bd <- 
-  Reduce( 
-    function(x, y) full_join(x, y, by = "qua_id"), 
-    list(qua_bd_tree, qua_bd_shrub, qua_bd)
-  )
+qua_bd <- full_join(qua_bd_tree, qua_bd_shrub, by = "qua_id")
 
 # JGD2011 / Japan Plane Rectangular CS zone VI (EPSG:6668), the more current and updated CRS using the JGD2011 datum.
 my_crs <- 6668
@@ -188,57 +170,32 @@ qua_position <-
   read.xlsx("data_raw/quadrat_info.xlsx", sheet = "QuaInfo") %>% 
   tibble() %>% 
   rename_with(~tolower(.x)) %>% 
-  filter(access == "F") %>% 
+  filter(
+    access == "F", qua_id %in% unique(c(indv_shrub$qua_id, indv_tree$qua_id))
+  ) %>% 
   # Bug: Need to check if quadrats is same to quadrats of plant data. 
   select(qua_id, lat, long) %>% 
   st_as_sf(coords = c("long", "lat"), crs = 4326, agr = "constant") %>% 
   st_transform(my_crs)
 
 # Land cover proportion data. 
-land_cover_raw <- read.xlsx("data_raw/GIS Quadrat_land_cover.xlsx") %>% 
+land_cover <- read.xlsx("data_raw/GIS Quadrat_land_cover.xlsx") %>% 
   as_tibble() %>% 
   rename_with(tolower) %>% 
   rename(qua_id = quadrat_id, land_cover = detailed_land_cover) %>% 
   select(qua_id, land_cover, shape_area) %>% 
-  # Replace the name with special marks.
+  # Replace land cover name with special marks.
   mutate(land_cover = gsub("[/ -]", "_", .$land_cover)) %>% 
   group_by(qua_id, land_cover) %>% 
-  summarise(area = sum(shape_area)/400) 
-# Check land cover total proportion, mean proportion, and frequency. 
-# left_join(
-#   land_cover_raw %>% 
-#     group_by(land_cover_cls) %>% 
-#     summarise(prop_tot = sum(prop), .groups = "drop") %>% 
-#     arrange(-prop_tot), 
-#   land_cover_raw %>% 
-#     group_by(land_cover_cls) %>% 
-#     summarise(prop_mean = mean(prop), .groups = "drop"), 
-#   by = "land_cover_cls"
-# ) %>% 
-#   ggplot(aes(prop_tot, prop_mean)) + 
-#   geom_point(alpha = 0.3) + 
-#   geom_text(aes(label = land_cover_cls), size = 2, check_overlap = F)
-# left_join(
-#   land_cover_raw %>%
-#     group_by(land_cover_cls) %>%
-#     summarise(prop_tot = sum(prop), .groups = "drop") %>%
-#     arrange(-prop_tot),
-#   land_cover_raw %>%
-#     group_by(land_cover_cls) %>%
-#     summarise(freq = n(), .groups = "drop"),
-#   by = "land_cover_cls"
-# ) %>%
-#   ggplot(aes(prop_tot, freq)) +
-#   geom_point(alpha = 0.3) +
-#   geom_text(aes(label = land_cover_cls), size = 2)
-
-# Conclusion: merge land cover with small total proportion and frequency. 
-land_cover <- land_cover_raw %>% 
+  summarise(area = sum(shape_area)/400, .groups = "drop") %>% 
+  # Re-categorize land cover, like aggregating less-frequent names into "other". 
   mutate(land_cover = case_when(
-    grepl(
-      "residential|transportation|multi_family_residential|park|
-      commercial_industrial|institutional|agriculture", land_cover
-    ) ~ land_cover, 
+    land_cover == "residential" ~ "low_resi", 
+    land_cover == "transportation" ~ "transport", 
+    land_cover == "multi_family_residential" ~ "mid_high_resi", 
+    land_cover == "park" ~ "park", 
+    land_cover == "commercial_industrial" ~ "com_ind", 
+    land_cover == "commercial_neighbor" ~ "com_ind", 
     TRUE ~ "other"
   ))
 
@@ -288,7 +245,7 @@ qua_pop_gis <- bind_rows(
 # nrow(filter(qua_pop_gis, pop_src == "near_mesh"))
 # mapview(filter(qua_pop_gis, pop_src == "near_mesh")) + 
 #   mapview(kyo_pop)
-# Bug: Why the sume of each part is not equal to total population? 
+# Bug: Why the sum of each part is not equal to total population? 
 # qua_pop_gis %>% 
 #   mutate(tot_pop = pop0_14 + pop15_64 + pop65over) %>% 
 #   mutate(rate = tot_pop / popt) %>% 
@@ -335,7 +292,7 @@ qua_land_cover <- land_cover %>%
     values_from = area, values_fill = 0
   )
 
-# Intergrate biodiversity data and env data. 
+# Integrate biodiversity data and env data. 
 qua_bd_var <- qua_position %>% 
   left_join(qua_bd, by = "qua_id") %>% 
   left_join(qua_land_cover, by = "qua_id") %>% 
@@ -402,7 +359,7 @@ GetCorrplot(
   st_drop_geometry(qua_bd_var)[bd_index], 
   st_drop_geometry(qua_bd_var)[c(land_cover_var, pop_var, "price")] %>% 
     # Bug: Revemo multi-family-resi for now. 
-    select(-multi_family_residential)
+    rename(mf = multi_family_residential)
 )
 dev.off()
 # 结论是大部分社会经济因素和多样性指标之间都无相关关系，而且有相关关系的部分居然都是正相关。土地覆盖和多样性指标之间的关系也很值得讨论。
@@ -411,8 +368,8 @@ dev.off()
 
 # 直观地看看各个变量之间的关系
 qua_bd_var %>% 
-  select(qua_id, all_of(bd_index), price, all_of(pop_var)) %>% 
-  pivot_longer(cols = c("price", pop_var), 
+  select(qua_id, all_of(bd_index), land_price, all_of(pop_var)) %>% 
+  pivot_longer(cols = c("land_price", pop_var), 
                names_to = "factor", values_to = "factor_value") %>% 
   pivot_longer(cols = bd_index, 
                names_to = "index", values_to = "index_value") %>% 
