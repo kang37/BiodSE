@@ -2,8 +2,8 @@
 # The relationship between biodiversity indexes and social economic variables, and land use classes. We are specifically interested in the environmental equity issue, e.g., if the vulnerable people is exposed to higher or lower biodiversity level. 
 # Package ---
 pacman::p_load(
-  openxlsx, dplyr, tidyr, psych, ggplot2, vegan, geosphere, leaps, sf, terra, 
-  tmap, showtext, openxlsx, regclass
+  openxlsx, dplyr, tidyr, psych, ggplot2, vegan, geosphere, leaps, sf, 
+  terra, gstat, tmap, showtext, openxlsx, regclass
 )
 showtext_auto()
 
@@ -266,21 +266,18 @@ land_price <- st_read("data_raw/LandPrice/L01-19_26_GML/L01-19_26.shp") %>%
 # bug: 如何提取各个样地的社会经济因子呢？
 
 # Get price of quadrats from closest price investigation points. 
-near_feat <- st_nearest_feature(qua_position, land_price)
-near_feat_dist <- lapply(
-  1:nrow(qua_position), 
-  function(x) {
-    as.numeric(st_distance(qua_position[x, ], land_price[near_feat, ][x, ]))
-  }
-) %>% 
-  unlist()
-# Bug: Take price of closest price inv sample as price of quadrat. 
 qua_price <- qua_position %>% 
-  mutate(price = land_price[near_feat, ] %>% pull(price))
-tm_shape(kyo_built) + 
-  tm_polygons(alpha = 0.3) + 
-  tm_shape(qua_price) + 
-  tm_dots(col = "price", border.alpha = 0, style = "kmeans")
+  mutate(
+    land_price = 
+      predict(
+        gstat(formula = price ~ 1, locations = land_price), 
+        newdata = qua_position
+      ) %>% 
+      st_drop_geometry() %>% 
+      rename("price" = "var1.pred") %>% 
+      pull(price)
+  ) %>% 
+  st_drop_geometry()
 
 # Integrate variables. 
 qua_land_cover <- land_cover %>% 
