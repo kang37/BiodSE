@@ -105,14 +105,6 @@ pop_var <- c(
   "pop85over_prop"
 )
 
-ward <- c(
-  "Ukyo-ku", "Kita-ku", "Sakyo-ku", "Kamigyo-ku", "Nakagyo-ku", "Shimogyo-ku", 
-  "Higashiyama-ku", "Minami-ku"
-)
-
-# Bug: 是否要仅保留在各个样方中均比较普遍的土地覆盖类型呢？但是如果那样做了，就只剩下residential和transportation两种了。在后期可以考虑在样方周围一定缓冲区内，计算土地利用或覆盖（但是数据不如现场调查那么精确）比例或景观指数和样方内的多样性指数之间的关系？
-land_cover_var <- unique(land_cover$land_cover)
-
 # 作图范围
 map_bbox <- c(135.62, 34.90, 135.839, 35.079)
 
@@ -198,6 +190,7 @@ land_cover <- read.xlsx("data_raw/GIS Quadrat_land_cover.xlsx") %>%
     land_cover == "commercial_neighbor" ~ "com_ind", 
     TRUE ~ "other"
   ))
+land_cover_var <- unique(land_cover$land_cover)
 
 # Get population data of quadrats. 
 # Population data of Kyoto City. 
@@ -268,14 +261,13 @@ land_price <- st_read("data_raw/LandPrice/L01-19_26_GML/L01-19_26.shp") %>%
 # Get price of quadrats from closest price investigation points. 
 qua_price <- qua_position %>% 
   mutate(
-    land_price = 
+    price = 
       predict(
         gstat(formula = price ~ 1, locations = land_price), 
         newdata = qua_position
       ) %>% 
       st_drop_geometry() %>% 
-      rename("price" = "var1.pred") %>% 
-      pull(price)
+      pull("var1.pred")
   ) %>% 
   st_drop_geometry()
 
@@ -354,19 +346,15 @@ png("data_proc/Cor_pairwise.png", width = 3000, height = 1500, res = 300)
 qua_pop <- st_drop_geometry(qua_pop_gis)
 GetCorrplot(
   st_drop_geometry(qua_bd_var)[bd_index], 
-  st_drop_geometry(qua_bd_var)[c(land_cover_var, pop_var, "price")] %>% 
-    # Bug: Revemo multi-family-resi for now. 
-    rename(mf = multi_family_residential)
+  st_drop_geometry(qua_bd_var)[c(land_cover_var, pop_var, "price")]
 )
 dev.off()
 # 结论是大部分社会经济因素和多样性指标之间都无相关关系，而且有相关关系的部分居然都是正相关。土地覆盖和多样性指标之间的关系也很值得讨论。
-# Bug: 可以将这个图改成ggplot的热图
-# corr.test(qua_bd_var[bd_index], qua_bd_var[c("price", land_cover_var, pop_var)])
 
 # 直观地看看各个变量之间的关系
 qua_bd_var %>% 
-  select(qua_id, all_of(bd_index), land_price, all_of(pop_var)) %>% 
-  pivot_longer(cols = c("land_price", pop_var), 
+  select(qua_id, all_of(bd_index), price, all_of(pop_var)) %>% 
+  pivot_longer(cols = c("price", pop_var), 
                names_to = "factor", values_to = "factor_value") %>% 
   pivot_longer(cols = bd_index, 
                names_to = "index", values_to = "index_value") %>% 
