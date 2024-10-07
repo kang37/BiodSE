@@ -430,7 +430,7 @@ lapply(
 get_best_model <- function(response_var, explain_var) {
   my_formula <- 
     paste(explain_var, collapse = " + ") %>% 
-    paste0(response_var, "^0.5 ~ ", .) %>% 
+    paste0(response_var, "^2 ~ ", .) %>% 
     as.formula()
   aic_best_model <- 
     regsubsets(
@@ -458,7 +458,7 @@ get_model <- function(response_var, x) {
   
   temp_model <- 
     lm(
-      paste0(response_var, "^0.5 ~ ", temp_formula), 
+      paste0(response_var, "^2 ~ ", temp_formula), 
       data = qua_bd_var
     )
   temp_model
