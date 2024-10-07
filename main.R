@@ -366,58 +366,57 @@ qua_bd_var %>%
 
 ## Best model ----
 # Function to get the best model based on AIC. 
-eval_model <- function(response_var, explain_var) {
-  if(length(explain_var) == 1) {
-    my_formula <- paste0(response_var, " ~ ", explain_var) %>% 
-      as.formula()
-    lm(my_formula, data = qua_bd_var) %>% 
-      summary() %>% 
-      return()
-  } else {
-    my_formula <- paste(explain_var, collapse = " + ") %>% 
-      paste0(response_var, " ~ ", .) %>% 
-      as.formula()
-    regsubsets(my_formula, data = qua_bd_var) %>% 
-      see_models(aicc = TRUE, report = 5) %>% 
-      return()
-  }
-}
-eval_model_all_explain <- function(response_var) {
+get_best_model <- function(response_var, explain_var) {
+  my_formula <- 
+    paste(explain_var, collapse = " + ") %>% 
+    paste0(response_var, " ~ ", .) %>% 
+    as.formula()
+  aic_best_model <- 
+    regsubsets(
+      my_formula, 
+      data = qua_bd_var, 
+      # Number of subsets of each size to record is max of combination of alternative variables. 
+      nbest = lapply(
+        c(1:length(land_cover_var)), 
+        function(x) ncol(combn(length(land_cover_var), x))
+      ) %>% 
+        unlist() %>% 
+        max(), 
+      method=c("exhaustive")
+    ) %>% 
+    see_models(aicc = TRUE, report = 10)
+  
   lapply(
-    list(
-      # One type of factors. 
-      land_cover_var, pop_var, 
-      # All factors. 
-      c(land_cover_var, pop_var, "price")
-    ), 
-    function(x) eval_model(response_var, x)
-  )
+    1:10, 
+    function(x) {
+      temp_formula = aic_best_model$Terms[x] %>% 
+        strsplit(" ") %>% 
+        .[[1]] %>% 
+        .[which(. != "")] %>% 
+        paste(collapse = " + ")
+      
+      temp_model = lm(paste0(c(response_var, temp_formula), collapse = " ~ "), data = qua_bd_var) %>% summary()
+      
+      temp_model_res <- temp_model$coefficients %>% data.frame() %>% 
+        rename_with(~ tolower(.x)) %>% 
+        rename_with(~ gsub("\\.+", "_", .x)) %>% 
+        rename_with(~ gsub("_$", "", .x))
+      
+      temp_model_res %>% 
+        mutate(
+          response_var = response_var, 
+          model_id = x, 
+          explain_var = rownames(temp_model_res), 
+          .before = 1
+        ) %>% 
+        tibble()
+    }
+  ) %>% 
+    bind_rows() %>% 
+    filter(explain_var != "(Intercept)")
 }
 
-# Loop variable pairs: response var - (tree + shrub) * biod index, explain var - land cover + pop + price and their interactions. 
-reg_res <- lapply(bd_index, eval_model_all_explain) %>% 
-  setNames(bd_index) %>% 
-  lapply(., function(x) {
-    setNames(x, c(
-      "land_cover", "pop", 
-      "land_cover + pop + price"
-    ))
-  })
-
-# Rearrange and analyze the results, and get the best model: the model with most variables (to explain the effects of the variables) in the top 3 models. 
-# Best model for tree abundance ~ land variables. 
-summary(lm(tree_abundance ~ residential + park + other, data = qua_bd_var))
-# Best model for tree abundance ~ pop variables. 
-# Bug: The model with most variable - the variables are not significant. 
-summary(lm(tree_abundance ~ pop85over_prop, data = qua_bd_var))
-# Best model for tree abundance ~ all variables. 
-summary(lm(tree_abundance ~ park + other + pop0_14_prop + pop85over_prop + price, data = qua_bd_var))
-
-# Best model for tree abundance ~ land variables. 
-summary(lm(tree_richness ~ residential + park + other, data = qua_bd_var))
-# Best model for tree abundance ~ pop variables. 
-# Bug: The model with most variable - the variables are not significant. 
-summary(lm(tree_richness ~ pop0_14_prop + pop65over_prop + pop85over_prop, data = qua_bd_var))
-# Best model for tree abundance ~ all variables. 
-summary(lm(tree_richness ~ agriculture + pop0_14_prop + pop85over_prop + price, data = qua_bd_var))
-
+lapply(
+  bd_index, 
+  function(x) get_best_model(x, c(land_cover_var, pop_var, "price"))
+)
