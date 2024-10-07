@@ -430,12 +430,12 @@ lapply(
 get_best_model <- function(response_var, explain_var) {
   my_formula <- 
     paste(explain_var, collapse = " + ") %>% 
-    paste0(response_var, "^2 ~ ", .) %>% 
+    paste0("log(", response_var, ") ~ ", .) %>% 
     as.formula()
   aic_best_model <- 
     regsubsets(
       my_formula, 
-      data = qua_bd_var, 
+      data = qua_bd_var %>% filter(get(response_var) != 0, !is.na(get(response_var))), 
       # Number of subsets of each size to record is max of combination of alternative variables. 
       nbest = lapply(
         c(1:length(land_cover_var)), 
@@ -458,8 +458,8 @@ get_model <- function(response_var, x) {
   
   temp_model <- 
     lm(
-      paste0(response_var, "^2 ~ ", temp_formula), 
-      data = qua_bd_var
+      paste0("log(", response_var, ") ~ ", temp_formula), 
+      data = qua_bd_var %>% filter(get(response_var) != 0, !is.na(get(response_var)))
     )
   temp_model
 }
