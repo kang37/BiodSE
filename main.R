@@ -395,7 +395,12 @@ get_best_model <- function(response_var, explain_var) {
         .[which(. != "")] %>% 
         paste(collapse = " + ")
       
-      temp_model = lm(paste0(c(response_var, temp_formula), collapse = " ~ "), data = qua_bd_var) %>% summary()
+      temp_model <- 
+        lm(
+          paste0(c(response_var, temp_formula), collapse = " ~ "), 
+          data = qua_bd_var
+        ) %>% 
+        summary()
       
       temp_model_res <- temp_model$coefficients %>% data.frame() %>% 
         rename_with(~ tolower(.x)) %>% 
@@ -419,4 +424,55 @@ get_best_model <- function(response_var, explain_var) {
 lapply(
   bd_index, 
   function(x) get_best_model(x, c(land_cover_var, pop_var, "price"))
+)
+
+# Residual normal test. 
+get_best_model <- function(response_var, explain_var) {
+  my_formula <- 
+    paste(explain_var, collapse = " + ") %>% 
+    paste0(response_var, "^2 ~ ", .) %>% 
+    as.formula()
+  aic_best_model <- 
+    regsubsets(
+      my_formula, 
+      data = qua_bd_var, 
+      # Number of subsets of each size to record is max of combination of alternative variables. 
+      nbest = lapply(
+        c(1:length(land_cover_var)), 
+        function(x) ncol(combn(length(land_cover_var), x))
+      ) %>% 
+        unlist() %>% 
+        max(), 
+      method=c("exhaustive")
+    ) %>% 
+    see_models(aicc = TRUE, report = 10)
+  
+  aic_best_model
+}
+get_model <- function(response_var, x) {
+  temp_formula = x %>% 
+    strsplit(" ") %>% 
+    .[[1]] %>% 
+    .[which(. != "")] %>% 
+    paste(collapse = " + ")
+  
+  temp_model <- 
+    lm(
+      paste0(response_var, "^2 ~ ", temp_formula), 
+      data = qua_bd_var
+    )
+  temp_model
+}
+lapply(
+  bd_index, 
+  function(y) {
+    get_best_model(y, land_cover_var) %>% 
+      tibble() %>% 
+      mutate(
+        model = lapply(Terms, function(x) get_model(y, x)), 
+        model_resid = lapply(model, function(x) residuals(x)), 
+        normal_test = 
+          lapply(model_resid, function(x) shapiro.test(x)$p.value) %>% unlist()
+      )
+  }
 )
