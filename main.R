@@ -426,12 +426,13 @@ get_best_glm <- function(response_var, explain_var) {
   
   # Merge results. 
   res <- glm_res %>% 
-    left_join(aic_res, by = "model_id")
+    left_join(aic_res, by = "model_id") %>% 
+    mutate(index = response_var, .before = 1)
   return(res)
 }
 
 # Function to get estimates and p values of the best models. 
-plot_model_var <- function(model_res_x) {
+get_glm_est_p <- function(model_res_x) {
   map2(
     model_res_x$model_id, 
     model_res_x$glm_smry, 
@@ -447,17 +448,21 @@ plot_model_var <- function(model_res_x) {
   ) %>% 
     bind_rows() %>% 
     rename_with(~ gsub("pr_z|pr_t", "p", .x)) %>% 
-    ggplot(aes(var, model_id)) + 
-    geom_tile(aes(fill = estimate > 0)) + 
-    geom_text(aes(label = sprintf("%.3f", p)), size = 3) + 
-    theme(axis.text.x = element_text(angle = 90))
+    mutate(index = unique(model_res_x$index), .before = 1)
 }
 
-for (i in bd_index[c(1, 2, 4, 5)]) {
-  print(
-    get_best_glm(i, explain_var) %>% 
-      plot_model_var() + 
-      ggtitle(i)
-  )
-}
-
+lapply(
+  bd_index[c(1, 2, 4, 5)], function(x) {
+    get_best_glm(x, c(land_cover_var, pop_var, "price")) %>% 
+      get_glm_est_p()
+  }
+) %>% 
+  bind_rows() %>% 
+  filter(var != "Intercept") %>% 
+  mutate(var = factor(var, levels = c(land_cover_var, pop_var, "price"))) %>% 
+  ggplot(aes(var, model_id)) + 
+  geom_tile(aes(fill = estimate > 0)) + 
+  geom_text(aes(label = sprintf("%.3f", p)), size = 3) + 
+  theme_bw() + 
+  theme(axis.text.x = element_text(angle = 90)) + 
+  facet_wrap(.~ index)
