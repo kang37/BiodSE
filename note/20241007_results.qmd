@@ -1,0 +1,95 @@
+---
+title: "土地利用、人口结构、地价和生物多样性"
+author: "康杰锋"
+format: html
+editor: visual
+editor_options: 
+  chunk_output_type: console
+---
+
+## 引言
+
+本文主要是关于土地利用、社会经济因子和生物多样性的关系，要讨论的主要问题是城市设计对城市绿色空间的影响和环境公平。
+
+在先行研究中，除了土地利用等景观要素与生物多样性的关系，还有很多研究聚焦社会经济要素和生物多样性的关系。后者的结果表明，在很多城市中，存在"luxury effect"，其实就是环境不平等在生物多样性方面的体现：收入越高的居住区，往往生物多样性也越高。但是这个结果可能因城市设计、人们的居住选择、文化而有所不同。本文综合了**景观要素和社会经济要素，探究城市生物多样性的成因或后果。**
+
+本研究的响应变量为各种生物多样性指标，包括：乔木的abundance、richness，灌木的abundance、richness。至于Shannon指数是否纳入分析，**仍需要讨论**，因为3个指数可能会让写作变得非常复杂。
+
+解释变量包括：（1）景观变量，为样地中各类土地覆盖的百分比，包括低层居住用地、中高层居住用地、交通用地、农业用地、公园等等；（2）社会变量，为人口结构，包括0-14岁、15-64岁、65岁以上、75岁以上、85岁以上人口占比；（3）经济变量，采用了地价。
+
+我先用皮尔森相关简单看了各个响应变量和各解释变量的关系，然后对每一个响应变量～解释变量组都构建了多个一般线性模型（GLM），筛选出最佳回归模型，再对变量进行分析。
+
+## 相关分析
+
+从下面的相关图可以看出，各个解释变量对各响应变量的效应比较一致。
+
+```{r}
+GetCorrplot(
+  st_drop_geometry(qua_bd_var)[bd_index], 
+  st_drop_geometry(qua_bd_var)[c(land_cover_var, pop_var, "price")]
+)
+```
+
+## GLM模型
+
+当然，相关分析仅考虑了一对变量之间的关系，而没有考虑其他变量的影响，因此我们还需要做回归模型分析。回归分析的首要问题是如何选入变量。在本研究中，我们对每个响应变量都测试了所有解释变量组合的模型效果。对于每个被测试的模型，有一个AIC值，AIC值和模型解释变量数量以及模型的拟合程度有关。通常认为AIC越小，模型越好。
+
+下面是筛选出来的最佳模型，每一行是一个模型：
+
+```{r}
+lapply(
+  bd_index[c(1, 2, 4, 5)], function(x) {
+    get_best_glm(x, c(land_cover_var, pop_var, "price"))
+  }
+) %>% 
+  lapply(function(x) select(x, model_id, my_formula, aic))
+```
+
+对于每个模型，我们主要关注estimate（表示解释变量和响应变量之间的正负关系）和p值（表示这种关系是否显著），因此，我提取了上面每个模型所涉及的解释变量的estimate和p值：
+
+```{r}
+lapply(
+  bd_index[c(1, 2, 4, 5)], function(x) {
+    get_best_glm(x, c(land_cover_var, pop_var, "price")) %>% 
+      get_glm_est_p() %>% 
+      filter(var != "(Intercept)") %>% 
+      select(model_id, var, estimate, p)
+  }
+)
+```
+
+为了方便对比，我把各个模型的estimate和p值都画出来了。下面图中的每个有颜色的格子表示一个模型中的一个解释变量，例如，左上角第一行是shrub_abundance的5个最佳模型之一，其中mid_high_resi、park、pop0_14_prop、pop_85_over_prop是彩色的，意思是这个模型中包含了这些变量；其中，红色表示这个变量和shrub_abundance是负向相关的，而绿色则是正向相关的；格子里的数字则是p值。各个模型的结果数值见后面附录。
+
+```{r}
+lapply(
+  bd_index[c(1, 2, 4, 5)], function(x) {
+    get_best_glm(x, c(land_cover_var, pop_var, "price")) %>% 
+      get_glm_est_p()
+  }
+) %>% 
+  bind_rows() %>% 
+  filter(var != "(Intercept)") %>% 
+  mutate(var = factor(var, levels = c(land_cover_var, pop_var, "price"))) %>% 
+  ggplot(aes(var, model_id)) + 
+  geom_tile(aes(fill = estimate > 0)) + 
+  geom_text(aes(label = sprintf("%.3f", p)), size = 3) + 
+  theme_bw() + 
+  theme(axis.text.x = element_text(angle = 90)) + 
+  facet_wrap(.~ index)
+```
+
+## 附录
+
+```{r}
+lapply(
+  bd_index[c(1, 2, 4, 5)], function(x) {
+    get_best_glm(x, c(land_cover_var, pop_var, "price")) %>% 
+      get_glm_est_p()
+  }
+) %>% 
+  bind_rows() %>% 
+  filter(var != "(Intercept)") %>% 
+  select(-t_value, -z_value) %>% 
+  knitr::kable() %>% 
+  kableExtra::kable_styling()
+```

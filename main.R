@@ -458,7 +458,7 @@ lapply(
   }
 ) %>% 
   bind_rows() %>% 
-  filter(var != "Intercept") %>% 
+  filter(var != "(Intercept)") %>% 
   mutate(var = factor(var, levels = c(land_cover_var, pop_var, "price"))) %>% 
   ggplot(aes(var, model_id)) + 
   geom_tile(aes(fill = estimate > 0)) + 
