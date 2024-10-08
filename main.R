@@ -2,7 +2,7 @@
 # The relationship between biodiversity indexes and social economic variables, and land use classes. We are specifically interested in the environmental equity issue, e.g., if the vulnerable people is exposed to higher or lower biodiversity level. 
 # Package ---
 pacman::p_load(
-  openxlsx, dplyr, tidyr, psych, ggplot2, vegan, geosphere, leaps, sf, 
+  openxlsx, dplyr, tidyr, purrr, psych, ggplot2, vegan, geosphere, leaps, sf, 
   terra, gstat, tmap, showtext, openxlsx, regclass
 )
 showtext_auto()
@@ -366,113 +366,98 @@ qua_bd_var %>%
 
 ## Best model ----
 # Function to get the best model based on AIC. 
-get_best_model <- function(response_var, explain_var) {
-  my_formula <- 
-    paste(explain_var, collapse = " + ") %>% 
-    paste0(response_var, " ~ ", .) %>% 
-    as.formula()
-  aic_best_model <- 
-    regsubsets(
-      my_formula, 
-      data = qua_bd_var, 
-      # Number of subsets of each size to record is max of combination of alternative variables. 
-      nbest = lapply(
-        c(1:length(land_cover_var)), 
-        function(x) ncol(combn(length(land_cover_var), x))
-      ) %>% 
-        unlist() %>% 
-        max(), 
-      method=c("exhaustive")
-    ) %>% 
-    see_models(aicc = TRUE, report = 10)
+get_best_glm <- function(response_var, explain_var) {
+  # Pre-process raw data. 
+  qua_bd_var_tar <- qua_bd_var %>% 
+    st_drop_geometry() %>% 
+    select(explain_var, response_var) %>% 
+    data.frame() %>% 
+    filter(!is.na(get(response_var)), get(response_var) != 0)
   
-  lapply(
-    1:10, 
-    function(x) {
-      temp_formula = aic_best_model$Terms[x] %>% 
-        strsplit(" ") %>% 
-        .[[1]] %>% 
-        .[which(. != "")] %>% 
-        paste(collapse = " + ")
-      
-      temp_model <- 
-        lm(
-          paste0(c(response_var, temp_formula), collapse = " ~ "), 
-          data = qua_bd_var
-        ) %>% 
-        summary()
-      
-      temp_model_res <- temp_model$coefficients %>% data.frame() %>% 
+  # Get best model basic results. 
+  if(response_var == "shrub_abundance") {
+    best_models <- bestglm(
+      Xy = qua_bd_var_tar, IC = "AIC", family = Gamma((link = "log"))
+    )
+  } else {
+    best_models <- bestglm(
+      Xy = qua_bd_var_tar, IC = "AIC", family = poisson((link = "log"))
+    )
+  }
+  best_models_mat <- best_models$BestModels %>% 
+    mutate(model_id = 1:nrow(.), .before = 1)
+  
+  # Get AIC for each model. 
+  aic_res <- best_models_mat %>% 
+    select(model_id, aic = Criterion)
+  
+  # Get GLM models and summary results for the best models. 
+  glm_res <- best_models_mat %>% 
+    select(all_of(explain_var), model_id) %>% 
+    pivot_longer(
+      cols = all_of(explain_var), names_to = "var", values_to = "var_in"
+    ) %>% 
+    filter(var_in) %>% 
+    group_by(model_id) %>% 
+    summarise(my_formula = paste0(var, collapse = " + "), .groups = "drop") %>% 
+    mutate(
+      my_formula = lapply(
+        my_formula, function(x) paste0(c(response_var, x), collapse = " ~ ")
+      ) %>% 
+        unlist()
+    )
+  if(response_var == "shrub_abundance") {
+    glm_res <- glm_res %>% 
+      mutate(glm_model = lapply(
+        my_formula, function(x) {
+          glm(x, family = poisson((link = "log")), data = qua_bd_var_tar)
+        }
+      ))
+  } else {
+    glm_res <- glm_res %>% 
+      mutate(glm_model = lapply(
+        my_formula, function(x) {
+          glm(x, family = Gamma((link = "log")), data = qua_bd_var_tar)
+        }
+      ))
+  }
+  glm_res <- glm_res %>% 
+    mutate(glm_smry = lapply(glm_model, function(x) summary(x)))
+  
+  # Merge results. 
+  res <- glm_res %>% 
+    left_join(aic_res, by = "model_id")
+  return(res)
+}
+
+# Function to get estimates and p values of the best models. 
+plot_model_var <- function(model_res_x) {
+  map2(
+    model_res_x$model_id, 
+    model_res_x$glm_smry, 
+    function(x, y) {
+      coef(y) %>% 
+        data.frame() %>% 
+        mutate(model_id = x, var = rownames(.), .before = 1) %>% 
+        tibble() %>% 
         rename_with(~ tolower(.x)) %>% 
         rename_with(~ gsub("\\.+", "_", .x)) %>% 
         rename_with(~ gsub("_$", "", .x))
-      
-      temp_model_res %>% 
-        mutate(
-          response_var = response_var, 
-          model_id = x, 
-          explain_var = rownames(temp_model_res), 
-          .before = 1
-        ) %>% 
-        tibble()
     }
   ) %>% 
     bind_rows() %>% 
-    filter(explain_var != "(Intercept)")
+    rename_with(~ gsub("pr_z|pr_t", "p", .x)) %>% 
+    ggplot(aes(var, model_id)) + 
+    geom_tile(aes(fill = estimate > 0)) + 
+    geom_text(aes(label = sprintf("%.3f", p)), size = 3) + 
+    theme(axis.text.x = element_text(angle = 90))
 }
 
-lapply(
-  bd_index, 
-  function(x) get_best_model(x, c(land_cover_var, pop_var, "price"))
-)
+for (i in bd_index[c(1, 2, 4, 5)]) {
+  print(
+    get_best_glm(i, explain_var) %>% 
+      plot_model_var() + 
+      ggtitle(i)
+  )
+}
 
-# Residual normal test. 
-get_best_model <- function(response_var, explain_var) {
-  my_formula <- 
-    paste(explain_var, collapse = " + ") %>% 
-    paste0(response_var, " ~ ", .) %>% 
-    as.formula()
-  aic_best_model <- 
-    regsubsets(
-      my_formula, 
-      data = qua_bd_var, 
-      # Number of subsets of each size to record is max of combination of alternative variables. 
-      nbest = lapply(
-        c(1:length(land_cover_var)), 
-        function(x) ncol(combn(length(land_cover_var), x))
-      ) %>% 
-        unlist() %>% 
-        max(), 
-      method=c("exhaustive")
-    ) %>% 
-    see_models(aicc = TRUE, report = 10)
-  
-  aic_best_model
-}
-get_model <- function(response_var, x) {
-  temp_formula = x %>% 
-    strsplit(" ") %>% 
-    .[[1]] %>% 
-    .[which(. != "")] %>% 
-    paste(collapse = " + ")
-  
-  temp_model <- 
-    lm(
-      paste0(response_var, " ~ ", temp_formula), 
-      data = qua_bd_var
-    )
-  temp_model
-}
-lapply(
-  bd_index, 
-  function(y) {
-    get_best_model(y, land_cover_var) %>% 
-      tibble() %>% 
-      mutate(
-        model = lapply(Terms, function(x) get_model(y, x)), 
-        model_resid = lapply(model, function(x) residuals(x)), 
-        normal_test = 
-          lapply(model_resid, function(x) shapiro.test(x)$p.value) %>% unlist()
-      )
-  }
-)
