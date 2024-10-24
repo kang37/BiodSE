@@ -503,18 +503,62 @@ get_glm_est_p <- function(model_res_x) {
     mutate(index = unique(model_res_x$index), .before = 1)
 }
 
-lapply(
-  bd_index[c(1, 2, 4, 5)], function(x) {
+# Best model formulas and AICs. 
+# Bug: Warnings. 
+best_aic <- lapply(
+  bd_index, function(x) {
+    get_best_glm(x, c(land_cover_var, pop_var, "price"))
+  }
+) %>% 
+  lapply(function(x) select(x, model_id, my_formula, aic))
+write.xlsx(
+  best_aic, paste0("data_proc/best_model_aic_", Sys.Date(), ".xlsx")
+)
+
+# Estimate of best models. 
+best_est <- lapply(
+  bd_index, function(x) {
     get_best_glm(x, c(land_cover_var, pop_var, "price")) %>% 
       get_glm_est_p()
   }
 ) %>% 
   bind_rows() %>% 
   filter(var != "(Intercept)") %>% 
-  mutate(var = factor(var, levels = c(land_cover_var, pop_var, "price"))) %>% 
+  mutate(var = factor(var, levels = c(land_cover_var, pop_var, "price")))
+
+# Plot estimates and p values. 
+best_est %>% 
   ggplot(aes(var, model_id)) + 
   geom_tile(aes(fill = estimate > 0)) + 
-  geom_text(aes(label = sprintf("%.3f", p)), size = 3) + 
+  geom_text(aes(label = sprintf("%.3f", p)), size = 2) + 
   theme_bw() + 
   theme(axis.text.x = element_text(angle = 90)) + 
   facet_wrap(.~ index)
+
+# Average and median estimates. 
+best_est %>% 
+  select(-t_value, -z_value) %>% 
+  group_by(index, var) %>% 
+  summarise(
+    model_num = max(model_id), 
+    estimate_mean = mean(estimate), 
+    estimate_mid = median(estimate), 
+    .groups = "drop"
+  ) 
+
+# Plot average estimate. 
+best_est %>% 
+  select(-t_value, -z_value) %>% 
+  group_by(index, var) %>% 
+  summarise(
+    model_num = max(model_id), 
+    estimate_mean = mean(estimate), 
+    estimate_mid = median(estimate), 
+    .groups = "drop"
+  ) %>% 
+  ggplot() + 
+  geom_tile(
+    aes(var, index, fill = c(estimate_mean > 0)), col = "black"
+  ) + 
+  theme_bw() + 
+  theme(axis.text.x = element_text(angle = 90))
