@@ -3,7 +3,7 @@
 # Package ---
 pacman::p_load(
   openxlsx, dplyr, tidyr, purrr, psych, ggplot2, vegan, geosphere, leaps, sf, 
-  terra, gstat, tmap, showtext, openxlsx, regclass
+  terra, gstat, tmap, patchwork, showtext, openxlsx, regclass, tools
 )
 showtext_auto()
 
@@ -337,6 +337,33 @@ tm_shape(kyo_built) +
   tm_polygons(alpha = 0.3) + 
   tm_shape(kyo_pop) + 
   tm_polygons(col = "pop85over", border.alpha = 0, style = "kmeans") 
+
+## Map for biodiversity indexes ----
+# Function to plot biodiversity size. 
+map_bd <- function(bd_index_x) {
+  # Breaks of the index values. 
+  index_quantile <- quantile(qua_bd_var[[bd_index_x]], na.rm = TRUE)[c(2:5)]
+  # Plot. 
+  tm_shape(kyo_built) + 
+    tm_polygons(col = "lightgrey", alpha = 0.7, border.alpha = 0) + 
+    tm_shape(qua_bd_var) + 
+    tm_dots(
+      size = bd_index_x, alpha = 0.7, scale = 0.5, 
+      title.size = gsub("_", " ", bd_index_x) %>% toTitleCase(),
+      sizes.legend = c(round(index_quantile))
+    ) + 
+    tm_layout(legend.position = c("left", "top"))
+}
+# Bug: Should change unit earlier. 
+qua_bd_var <- 
+  qua_bd_var %>% mutate(shrub_abundance = shrub_abundance / 10000)
+png(
+  paste0("data_proc/bd_map_", Sys.Date(), ".png"), 
+  width = 16, height = 16, units = "cm", res = 300
+)
+lapply(bd_index, map_bd) %>% 
+  tmap_arrange()
+dev.off()
 
 ## Biod indexes ~ factors ----
 # 统计分析部分 
