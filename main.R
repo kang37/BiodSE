@@ -96,8 +96,7 @@ LmRes2Df <- function(x) {
 # Read data ----
 ## Constant ----
 bd_index <- c(
-  "tree_abundance", "tree_richness", "tree_shannon", 
-  "shrub_abundance", "shrub_richness", "shrub_shannon"
+  "tree_abundance", "tree_richness", "shrub_abundance", "shrub_richness"
 )
 
 pop_var <- c(
