@@ -1,0 +1,213 @@
+---
+title: "对上次讨论的回应"
+author: "康杰锋"
+format: html
+editor: visual
+execute: 
+  echo: false
+  warning: false
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+#| echo: false
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE)
+```
+
+## 奢侈效应
+
+我们的分析中，不管是单因素还是多因素分析，都检出了地价和生物多样性负相关的结果。
+
+```{r}
+qua_bd_var %>% 
+  select(price, all_of(bd_index)) %>% 
+  pivot_longer(
+    cols = c(all_of(bd_index)), names_to = "other_var", values_to = "var_val"
+  ) %>% 
+  mutate(
+    other_var = factor(other_var, levels = c(bd_index))
+  ) %>% 
+  ggplot(aes(price / 10000, var_val)) + 
+  geom_point(alpha = 0.3) + 
+  geom_smooth(method = "lm") + 
+  # lims(x = c(0, 125)) + 
+  facet_wrap(.~ other_var, scales = "free_y") + 
+  theme_bw()
+```
+
+由于地价范围大多集中在125万之内，因此我把横轴范围稍微缩短一点，忽略那些地价特别高的点，则图片如下。
+
+```{r}
+qua_bd_var %>% 
+  select(price, all_of(bd_index)) %>% 
+  pivot_longer(
+    cols = c(all_of(bd_index)), names_to = "other_var", values_to = "var_val"
+  ) %>% 
+  mutate(
+    other_var = factor(other_var, levels = c(bd_index))
+  ) %>% 
+  ggplot(aes(price / 10000, var_val)) + 
+  geom_point(alpha = 0.3) + 
+  geom_smooth(method = "lm") + 
+  # lims(x = c(0, 125)) + 
+  facet_wrap(.~ other_var, scales = "free_y") + 
+  theme_bw()
+```
+
+由于目前还没找到和奢侈效应（luxury effect）相反的研究结果，而且我们的研究并不是专门针对这个效应设计的，因此证据强度比较弱，所以我不知道称之为"反奢侈效应"是否合适；但是此处姑且这么称呼它。
+
+反奢侈效应在一些研究中应该有发表过，我印象中看到过南美的一个案例，是低收入人群所在地的生物多样性反而比较高，原因可能是低收入人群种植更多品类的蔬菜水果，或者这些社区的荒地缺乏管理，因此植物种类更多。除了这样的研究结果本身较少，检索不到反奢侈效应还可能因为：如果研究者检测到收入和生物多样性相关，会觉得合情合理，直接就套上"奢侈效应"来解释；如果没有检测到显著结果，通常就不会报告；如果检测到相反的结果，就会怀疑这个结果是否正确，正如[Nature这篇文章](https://www.nature.com/articles/s42949-023-00128-7#Sec2)所说，奢侈效应和legacy effect都会受到其他因子的干扰，即使我们的分析中已经把其他因子加进去，做了广义线性回归。
+
+上一次提到，为了理解我们检测到的反奢侈效应，先把不同低价的样地挑出来，看看有什么差别。那么我们首先看看，不同地价水平样地对应的其他因子的差异。
+
+```{r}
+qua_bd_var %>% 
+  select(price, all_of(land_cover_var), all_of(pop_var)) %>% 
+  pivot_longer(
+    cols = c(all_of(land_cover_var), all_of(pop_var)), 
+    names_to = "other_var", values_to = "var_val"
+  ) %>% 
+  mutate(
+    other_var = factor(other_var, levels = c(land_cover_var, pop_var))
+  ) %>% 
+  ggplot(aes(price / 10000, var_val)) + 
+  geom_point(alpha = 0.3) + 
+  geom_smooth(method = "lm") + 
+  facet_wrap(.~ other_var) + 
+  theme_bw()
+```
+
+同样地，由于地价多集中于125万以内，所以先忽略特别高地价的样地，则图片变成下面这样。可见不同地价水平下，样地内的各个人口结构变量差异不大，而土地占比则略有差异：随着地价升高，地层住宅用地占比减少，交通用地占比增加，尽管这种**变化非常微妙**。如果结合单因素相关分析结果，我们发现，地价唯一影响到的生物多样性指数是tree richness，而地层住宅用地占比和tree richness呈正相关（尽管不显著），交通用地和tree richness呈负相关（也不显著），所以**可以猜测**，或许正是这两个因素导致了地价和tree richness的负相关。
+
+```{r}
+qua_bd_var %>% 
+  select(price, all_of(land_cover_var), all_of(pop_var)) %>% 
+  pivot_longer(
+    cols = c(all_of(land_cover_var), all_of(pop_var)), 
+    names_to = "other_var", values_to = "var_val"
+  ) %>% 
+  mutate(
+    other_var = factor(other_var, levels = c(land_cover_var, pop_var))
+  ) %>% 
+  ggplot(aes(price / 10000, var_val)) + 
+  geom_point(alpha = 0.3) + 
+  geom_smooth(method = "lm") + 
+  lims(x = c(0, 125)) + 
+  facet_wrap(.~ other_var) + 
+  theme_bw()
+```
+
+我还附上了各个调查样地的卫星图片，以及各个样地的地价（地价是"price"列，从低到高排列）表格，你可以浏览一下，看看能不能发现什么有价值的点。各个样点在地图上的分布如下图，地价用颜色表示；也可以将图层改成卫星图查看各个样地大概长什么样，但是不如发给你的卫星图片详细就是了。
+
+```{r}
+qua_bd_var %>% 
+  mutate(price = price / 10000) %>% 
+  mutate(price = cut(
+    price, breaks = quantile(price)
+  )) %>% 
+  mapview::mapview(., zcol = "price")
+```
+
+## 多样性地图
+
+根据上次讨论，参考海南论文，作京都市各样点多样性大小地图。
+
+```{r}
+lapply(bd_index, map_bd) %>% 
+  tmap_arrange()
+```
+
+此外，作为参考，提供各个指数的分布情况。
+
+```{r}
+(
+  (
+  ggplot(qua_bd_var) + 
+    geom_histogram(aes(tree_abundance))
+) | (
+  ggplot(qua_bd_var) + 
+    geom_histogram(aes(tree_richness))
+)
+) / (
+  (
+  ggplot(qua_bd_var) + 
+    geom_histogram(aes(shrub_abundance))
+) | (
+  ggplot(qua_bd_var) + 
+    geom_histogram(aes(shrub_richness))
+)
+)
+```
+
+## 相关分析
+
+根据讨论，把Shannon指数结果去除，并且做出表格（见Excel文件）。此处仍然附上图片以供内部参考。
+
+```{r}
+GetCorrplot(
+  st_drop_geometry(qua_bd_var)[bd_index], 
+  st_drop_geometry(qua_bd_var)[c(land_cover_var, pop_var, "price")]
+)
+```
+
+## GLM模型
+
+当然，相关分析仅考虑了一对变量之间的关系，而没有考虑其他变量的影响，因此我们还需要做回归模型分析。回归分析的首要问题是如何选入变量。在本研究中，我们对每个响应变量都测试了所有解释变量组合的模型效果。对于每个被测试的模型，有一个AIC值，AIC值和模型解释变量数量以及模型的拟合程度有关。通常认为AIC越小，模型越好。筛选出来的最佳模型所包含的自变量和AIC见Excel附件。
+
+对于每个模型，我们主要关注estimate（表示解释变量和响应变量之间的正负关系）和p值（表示这种关系是否显著），因此，我提取了上面每个模型所涉及的解释变量的estimate和p值。
+
+```{r}
+best_est %>% 
+  select(-t_value, -z_value) %>% 
+  knitr::kable() %>% 
+  kableExtra::kable_styling()
+```
+
+为了方便对比，我把各个模型的estimate和p值都画出来了。下面图中的每个有颜色的格子表示一个模型中的一个解释变量，例如，左上角第一行是shrub_abundance的5个最佳模型之一，其中mid_high_resi、park、pop0_14_prop、pop_85_over_prop是彩色的，意思是这个模型中包含了这些变量；其中，红色表示这个变量和shrub_abundance是负向相关的，而绿色则是正向相关的；格子里的数字则是p值。各个模型的结果数值见后面附录。
+
+```{r}
+best_est %>% 
+  ggplot(aes(var, model_id)) + 
+  geom_tile(aes(fill = estimate > 0)) + 
+  geom_text(aes(label = sprintf("%.3f", p)), size = 2) + 
+  theme_bw() + 
+  theme(axis.text.x = element_text(angle = 90)) + 
+  facet_wrap(.~ index)
+```
+
+每个自变量在不同的最佳模型中系数不同，但是方向相同，因此计算每个自变量的平均系数（相当于平均效应）和中位数，以及这个平均数和中位数是从多少个模型中计算出来的。
+
+```{r}
+best_est %>% 
+  select(-t_value, -z_value) %>% 
+  group_by(index, var) %>% 
+  summarise(
+    model_num = max(model_id), 
+    estimate_mean = mean(estimate), 
+    estimate_mid = median(estimate), 
+    .groups = "drop"
+  ) %>% 
+  kable() %>% 
+  kable_styling()
+```
+
+将该表格信息可视化出来，方便写作。
+
+```{r}
+best_est %>% 
+  select(-t_value, -z_value) %>% 
+  group_by(index, var) %>% 
+  summarise(
+    model_num = max(model_id), 
+    estimate_mean = mean(estimate), 
+    estimate_mid = median(estimate), 
+    .groups = "drop"
+  ) %>% 
+  ggplot() + 
+  geom_tile(
+    aes(var, index, fill = c(estimate_mean > 0)), col = "black"
+  ) + 
+  theme_bw() + 
+  theme(axis.text.x = element_text(angle = 90))
+```
