@@ -348,6 +348,32 @@ GetCorrplot(
   st_drop_geometry(qua_bd_var)[c(land_cover_var, pop_var, "price")]
 )
 dev.off()
+# 输出相关性检验表格。
+get_cor_table <- function() {
+  index_env_pair <- expand.grid(
+    bd_index, 
+    c(land_cover_var, pop_var, "price")
+  ) %>% 
+    rename_with(~ c("index", "env_val"))
+  
+  map2(
+    index_env_pair$index, index_env_pair$env_val, 
+    function(x, y) {
+      cor_res <- cor.test(qua_bd_var[[x]], qua_bd_var[[y]])
+      tibble(index = x, env_val = y, estimate = cor_res$estimate, p = cor_res$p.value)
+    }
+  ) %>% 
+    bind_rows() %>% 
+    mutate(
+      env_val = factor(env_val, levels = c(land_cover_var, pop_var, "price"))
+    ) %>% 
+    arrange(index, env_val) %>% 
+    mutate(p_label = case_when(
+      p < 0.001 ~ "***", p < 0.01 ~ "**", p < 0.05 ~ "*", p >= 0.05 ~ ""
+    ))
+}
+get_cor_table() %>% 
+  write.xlsx(paste0("data_proc/cor_res_", Sys.Date(), ".xlsx"))
 # 结论是大部分社会经济因素和多样性指标之间都无相关关系，而且有相关关系的部分居然都是正相关。土地覆盖和多样性指标之间的关系也很值得讨论。
 
 # 直观地看看各个变量之间的关系
