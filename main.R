@@ -1,5 +1,6 @@
 # Statement ----
 # The relationship between biodiversity indexes and social economic variables, and land use classes. We are specifically interested in the environmental equity issue, e.g., if the vulnerable people is exposed to higher or lower biodiversity level. 
+
 # Package ---
 pacman::p_load(
   openxlsx, dplyr, tidyr, purrr, psych, ggplot2, vegan, geosphere, leaps, sf, 
@@ -14,7 +15,7 @@ showtext_auto()
 # x_comm: community data, you can get it with GetComm().
 # col.group: column name group based on, without quotation marks.
 # Bug: Need revise for shrub data or just remove it. 
-GetDiv <- function(x, x_comm, col.group) {
+get_div <- function(x, x_comm, col.group) {
   # inside function: summary each attribute 
   funin_attrcalc <- function(coltar, tarvalue) {
     x_sub <- x
@@ -43,7 +44,7 @@ GetDiv <- function(x, x_comm, col.group) {
 # Argument: 
 # x: independent variable.
 # y: dependent variable.
-GetCorrplot <- function(x, y) {
+plot_cor <- function(x, y) {
   # Change colnames. 
   # colnames(x) <- x.name
   # colnames(y) <- y.name
@@ -57,7 +58,7 @@ GetCorrplot <- function(x, y) {
 }
 
 # 备选变量：仅考虑上一步皮尔森检测中数据量大于10个的变量
-GetRegSubset <- function(x, var_response) {
+subset_reg <- function(x, var_response) {
   leaps <- regsubsets(
     richness ~ pop_prop_65_up + pop_prop_75_up + popf_prop_75_up + 
       residential + multi_family_residential + commercial_industrial, 
@@ -68,7 +69,7 @@ GetRegSubset <- function(x, var_response) {
 # Function: turn lm() result into data.frame. 
 # Argument: 
 # x: result of lm()
-LmRes2Df <- function(x) {
+lm_res_df <- function(x) {
   # get coefficients 
   ressum <- summary(x)$coefficients
   # get var name, estimate, and p-value 
@@ -123,7 +124,7 @@ qua_bd_tree <- indv_tree %>%
     names_from = species, values_from = stem, values_fn = sum, values_fill = 0
   ) %>% 
   # Calculate biodiversity. 
-  GetDiv(x = indv_tree, x_comm = ., col.group = qua_id) %>% 
+  get_div(x = indv_tree, x_comm = ., col.group = qua_id) %>% 
   # Rename diversity names. 
   rename_with(
     .cols = c(abundance, richness, shannon), .fn = ~ paste0("tree_", .)
@@ -144,7 +145,7 @@ shrub_comm <- indv_shrub %>%
   ) 
 qua_bd_shrub <- shrub_comm %>%
   # Calculate biodiversity. 
-  GetDiv(x = indv_tree, x_comm = ., col.group = qua_id) %>% 
+  get_div(x = indv_tree, x_comm = ., col.group = qua_id) %>% 
   # Rename diversity names. 
   rename_with(
     .cols = c(abundance, richness, shannon), .fn = ~ paste0("shrub_", .)
@@ -300,7 +301,7 @@ tm_shape(kyo_built) +
   tm_scale_bar()
 dev.off()
 
-# plot for population structure: example of age > 75
+# plot for population structure: example of age > 75.
 png("data_proc/map_prop_age_75_up.png", width = 1500, height = 1500, res = 300)
 tm_shape(kyo_built) + 
   tm_fill(col = "white") + 
@@ -345,10 +346,10 @@ map_bd <- function(bd_index_x) {
   index_quantile <- quantile(qua_bd_var[[bd_index_x]], na.rm = TRUE)[c(2:5)]
   # Plot. 
   tm_shape(kyo_built) + 
-    tm_polygons(col = "lightgrey", alpha = 0.7, border.alpha = 0) + 
+    tm_polygons(col = "lightgrey", fill_alpha = 0.7, col_alpha = 0) + 
     tm_shape(qua_bd_var) + 
     tm_dots(
-      size = bd_index_x, alpha = 0.7, scale = 0.5, 
+      size = bd_index_x, fill_alpha = 0.7, scale = 0.5, 
       title.size = gsub("_", " ", bd_index_x) %>% toTitleCase(),
       sizes.legend = c(round(index_quantile))
     ) + 
@@ -362,7 +363,7 @@ png(
   width = 16, height = 16, units = "cm", res = 300
 )
 lapply(bd_index, map_bd) %>% 
-  tmap_arrange()
+  tmap_arrange(nrow = 2)
 dev.off()
 
 ## Biod indexes ~ factors ----
@@ -370,7 +371,7 @@ dev.off()
 # 分析各个生物多样性指标和社会经济因素之间的关系
 png("data_proc/Cor_pairwise.png", width = 3000, height = 1500, res = 300)
 qua_pop <- st_drop_geometry(qua_pop_gis)
-GetCorrplot(
+plot_cor(
   st_drop_geometry(qua_bd_var)[bd_index], 
   st_drop_geometry(qua_bd_var)[c(land_cover_var, pop_var, "price")]
 )
