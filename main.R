@@ -157,6 +157,116 @@ qua_bd_var %>%
   facet_grid(index ~ factor, scales = "free") + 
   theme_bw()
 
+## GLM models ----
+# 响应变量列表。
+# Bug: Should correct bd_index and replace the following var. 
+response_vars <- c(
+  "tree_richness", "tree_abundance", "tree_shannon", 
+  "shrub_richness", "shrub_abundance", "shrub_shannon"
+)
+
+# 构造组合：响应变量 × 自变量组。
+resp_exp_comb <- expand.grid(
+  response_vars, 
+  list(
+    pop_var, land_cover_var, 
+    c(pop_var, land_cover_var, "price")
+  )
+) %>% 
+  rename_with(~ c("resp_var", "exp_var")) %>% 
+  group_by(resp_var) %>% 
+  mutate(model_id = row_number()) %>% 
+  ungroup()
+
+# 函数：对指定变量构建GLM并输出结果。
+get_glm <- function(resp_x, exp_x, model_id_x) {
+  if(grepl("shrub_abundance|shannon", resp_x)) {
+    # 对于非负数连续型：tweedie(var.power = 1.5, link.power = 0)。
+    # 对于正连续型：Gamma(link = "log")。
+    # 选择tweedie分布所需的var.power参数。
+    tar_var_power <- tweedie.profile(
+      as.formula(paste0(resp_x, "~", paste0(exp_x, collapse = " + "))),
+      data = qua_bd_var,
+      p.vec = seq(1.1, 1.9, 0.1),
+      do.plot = TRUE
+    )$p.max
+    print(c("var power: ", tar_var_power))
+    # 构建GLM。
+    res <- glm(
+      as.formula(paste0(resp_x, "~", paste0(exp_x, collapse = " + "))),
+      data = qua_bd_var, 
+      family = tweedie(var.power = tar_var_power, link.power = 0)
+    ) %>% 
+      summary()
+  } else {
+    # 对于计数型变量。
+    res <- glm(
+      as.formula(paste0(resp_x, "~", paste0(exp_x, collapse = " + "))),
+      data = qua_bd_var, 
+      family = poisson((link = "log"))
+    ) %>% 
+      summary()
+  }
+  res$coefficients %>% 
+    data.frame() %>% 
+    rename_with(~ c("est", "std_error", "statistics", "p")) %>% 
+    mutate(
+      model_id = model_id_x,
+      resp_var = resp_x, 
+      exp_var = rownames(.), 
+      p_lab = case_when(
+        p < 0.001 ~ "***", p < 0.01 ~ "**", p < 0.05 ~ "*", p >= 0.05 ~ ""
+      ), 
+      est_p = paste0(
+        ifelse(abs(est) > 0.01, sprintf("%.2f", est), sprintf("%.2e", est)), 
+        p_lab
+      ), 
+      .before = 1
+    ) %>% 
+    tibble()
+}
+# 各组合GLM结果。
+glm_res <- 
+  pmap(
+    list(resp_exp_comb$resp_var, resp_exp_comb$exp_var, resp_exp_comb$model_id), 
+    get_glm
+  ) %>% 
+  bind_rows() %>% 
+  mutate(
+    resp_var_model = paste0(resp_var, "-", model_id), 
+    exp_var = factor(
+      exp_var, levels = c("(Intercept)", land_cover_var, pop_var, "price")
+    ), 
+    est_cat = case_when(
+      est < 0 ~ "est < 0", est == 0 ~ "est = 0", est > 0 ~ "est > 0"
+    )
+  ) %>% 
+  separate(col = resp_var, into = c("tree_shrub", "bd_index"))
+
+# 结果作图。
+ggplot() + 
+  geom_tile(
+    data = glm_res, 
+    aes(model_id, exp_var, fill = est_cat), col = "white"
+  ) + 
+  geom_tile(
+    data = glm_res %>% filter(p_lab == ""), 
+    aes(model_id, exp_var), fill = "white", alpha = 0.8
+  ) + 
+  theme_bw() + 
+  theme(axis.text.x = element_text(angle = 90)) + 
+  facet_grid(tree_shrub ~ bd_index)
+
+# 输出结果。
+glm_res %>% 
+  select(resp_var_model, est_p, exp_var) %>% 
+  mutate() %>% 
+  pivot_wider(
+    id_cols = "exp_var", names_from = resp_var_model, 
+    values_from = est_p, values_fill = ""
+  ) %>% 
+  select("exp_var", paste(rep(response_vars, each = 3), c(1:3), sep = "-"))
+
 ## Best model ----
 # Function to get the best model based on AIC. 
 get_best_glm <- function(response_var, explain_var) {
