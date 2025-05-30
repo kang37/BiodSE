@@ -10,6 +10,29 @@ pacman::p_load(
 showtext_auto()
 
 # Function ----
+# Test before making correlation function. 
+# 检验因变量，即生物多样性指数各列的正态性。
+lapply(
+  bd_index, function(x) shapiro.test(qua_bd_var[[x]])$p.value
+) %>% 
+  unlist() %>% 
+  setNames(bd_index) %>% 
+  data.frame() %>% 
+  rename_with(~"shapiro_p") %>% 
+  mutate(var = rownames(.), .before = 1) %>% 
+  tibble() %>% 
+  mutate(p_sig = c(shapiro_p < 0.05))
+
+# 可视化检验各生物多样性指标因变量的偏态情况。
+lapply(
+  bd_index, 
+  function(x) {
+    ggplot(qua_bd_var) + 
+      geom_histogram(aes(.data[[x]]), bins = 20)
+  }
+) %>% 
+  gridExtra::grid.arrange(grobs =., nrow = 2)
+
 # Function to visualize correlation between 2 groups. 
 # Argument: 
 # x: independent variable.
@@ -18,8 +41,8 @@ plot_cor <- function(x, y) {
   # Change colnames. 
   # colnames(x) <- x.name
   # colnames(y) <- y.name
-  # 计算各列两两之间的相关性
-  cor.res <- corr.test(x, y)
+  # 计算各列两两之间的相关性：基于上述检验，选择Spearman方法。
+  cor.res <- corr.test(x, y, method = "spearman")
   # 作图表示相关性大小和是否显著，如果不显著的话，会以打叉表示
   corrplot::corrplot(
     corr = cor.res$r, method = "number", p.mat = cor.res$p, 
@@ -110,7 +133,6 @@ dev.off()
 # 统计分析部分 
 # 分析各个生物多样性指标和社会经济因素之间的关系
 png("data_proc/Cor_pairwise.png", width = 3000, height = 1500, res = 300)
-qua_pop <- st_drop_geometry(qua_pop_gis)
 plot_cor(
   st_drop_geometry(qua_bd_var)[bd_index], 
   st_drop_geometry(qua_bd_var)[c(land_cover_var, pop_var, "price")]
