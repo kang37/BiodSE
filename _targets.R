@@ -43,7 +43,10 @@ get_div <- function(x, x_comm, col.group) {
 list(
   tar_target(
     bd_index, 
-    c("tree_abundance", "tree_richness", "shrub_abundance", "shrub_richness")
+    c(
+      "tree_richness", "tree_abundance", "tree_shannon", 
+      "shrub_richness", "shrub_abundance", "shrub_shannon"
+    )
   ),
   tar_target(
     pop_var, 
@@ -261,6 +264,8 @@ list(
       left_join(qua_land_cover, by = "qua_id") %>% 
       # Bug: Make qua_pop and qua_price as general data.frame. 
       left_join(st_drop_geometry(qua_pop_gis), by = "qua_id") %>% 
-      left_join(st_drop_geometry(qua_price), by = "qua_id")
+      left_join(st_drop_geometry(qua_price), by = "qua_id") %>% 
+      # 将生物多样性指标各列中的缺失值都换成0。
+      mutate(across(all_of(bd_index), ~replace_na(., 0)))
   )
 )
