@@ -121,13 +121,19 @@ map_bd <- function(bd_index_x) {
     tm_layout(legend.position = c("left", "top"))
 }
 
-png(
-  paste0("data_proc/bd_map_", Sys.Date(), ".png"), 
-  width = 16, height = 16, units = "cm", res = 300
+lapply(
+  bd_index, 
+  function(x) {
+    tm_shape(kyo_built) + 
+      tm_polygons() + 
+      tm_shape(qua_bd_var) +
+      tm_dots(size = x, fill = "darkgreen", fill_alpha = 0.6) + 
+      tm_layout(
+        title.size = "",
+        legend.bg.color = NA, legend.frame = FALSE, frame = FALSE
+      )
+  }
 )
-lapply(bd_index, map_bd) %>% 
-  tmap_arrange(nrow = 2)
-dev.off()
 
 ## Biod indexes ~ factors ----
 # 统计分析部分 
