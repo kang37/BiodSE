@@ -1,6 +1,5 @@
 # Statement ----
 # The relationship between biodiversity indexes and social economic variables, and land use classes. We are specifically interested in the environmental equity issue, e.g., if the vulnerable people is exposed to higher or lower biodiversity level. 
-
 # Package ---
 pacman::p_load(
   openxlsx, dplyr, tidyr, purrr, psych, ggplot2, vegan, geosphere, leaps, sf, 
@@ -24,14 +23,31 @@ lapply(
   mutate(p_sig = c(shapiro_p < 0.05))
 
 # 可视化检验各生物多样性指标因变量的偏态情况。
-lapply(
-  bd_index, 
-  function(x) {
-    ggplot(qua_bd_var) + 
-      geom_histogram(aes(.data[[x]]), bins = 20)
-  }
-) %>% 
-  gridExtra::grid.arrange(grobs =., nrow = 2)
+png(
+  "data_proc/hist_bd_index.png", res = 300, width = 15, height = 8, units = "cm"
+)
+qua_bd_var %>% 
+  st_drop_geometry() %>% 
+  select(qua_id, all_of(bd_index)) %>% 
+  # mutate(across(all_of(bd_index), ~ .x/max(.x))) %>% 
+  pivot_longer(
+    cols = all_of(bd_index), names_to = "index", values_to = "val"
+  ) %>% 
+  separate(col = index, into = c("tree_shrub", "index")) %>% 
+  ggplot() + 
+  geom_histogram(aes(val), bins = 15) + 
+  facet_grid(
+    tree_shrub ~ index, labeller = labeller(
+      tree_shrub = c("tree" = "Tree", "shrub" = "Shrub"), 
+      index = c(
+        "abundance" = "Abundance", "richness" = "Richness", "shannon" = "Shannon"
+      )
+    ), 
+    scales = "free"
+  ) + 
+  theme_bw() + 
+  labs(x = "Index value", y = "Quadrat count")
+dev.off()
 
 # Function to visualize correlation between 2 groups. 
 # Argument: 
