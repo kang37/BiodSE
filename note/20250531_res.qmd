@@ -1,0 +1,204 @@
+---
+title: "土地利用、生物多样性和环境公平"
+author: "康杰锋"
+format: html
+editor: visual
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+#| echo: false
+#| warning: false
+library(knitr)
+opts_chunk$set(echo = FALSE)
+```
+
+## **引言**
+
+本文主要是关于土地利用、社会经济因子和生物多样性的关系，要讨论的主要问题是土地利用的影响和环境公平。
+
+在先行研究中，除了土地利用等景观要素与生物多样性的关系，还有很多研究聚焦社会经济要素和生物多样性的关系。后者的结果表明，在很多城市中，存在"luxury effect"，其实就是环境不平等在生物多样性方面的体现：收入越高的居住区，往往生物多样性也越高。但是这个结果可能因城市设计、人们的居住选择、文化而有所不同。本文综合了**景观要素和社会经济要素，探究城市生物多样性的成因或后果，且比较了不同类群（乔木和灌木）的多种多样性指标。**
+
+本研究的响应变量为各种生物多样性指标，包括：乔木的abundance、richness、Shannon指数，灌木的abundance、richness、Shannon指数，乔木灌木合起来的richness。
+
+解释变量包括：（1）景观变量，为样地中各类土地覆盖的百分比，包括居住用地、交通用地、农业用地、公园、公共机构等等；（2）社会变量，为人口结构，包括0-14岁、15-64岁、65岁以上、75岁以上、85岁以上人口占比；（3）经济变量，采用了地价。
+
+我先用斯皮尔曼（和之前不同；之前用的是皮尔森）相关简单看了各个响应变量和各解释变量的关系，然后对每一个相应变量～解释变量组都构建了GLM模型。至于之前的"最佳模型"，在本次分析中删除了，因为变量数量不多，加之筛选最佳模型的话结果太复杂，因此感觉没有必要进行该步骤。**注意：要如何理解相关分析和GLM模型之间的关系 - 相关性分析可以看作基础分析，因为它每次只考虑一个变量，而GLM则考虑了诸多变量；此外，两者结合来看，如果效应一致的话，可以看作一种相互印证。**
+
+## 描述性统计
+
+展示一部分原始数据，以便对下文的分析有点基础直观的理解。原始数据中的主要内容：qua_id - 样地编号，总共有174个样地；各个样地的生物多样性数值，如tree_abundance、tree_richness等，这些是分析中的因变量；自变量，包含3类：第一类各个样地中各类土地利用的占比 - 例如park是调查样地中公园用地的比例，第二类是各年龄层人口占比 - 例如pop65_74_prop是65-74岁的人口所占的比例，第三类是用于指代经济水平的土地价格变量。完整的原始数据见文件：qua_bd_var.csv。
+
+```{r}
+kable(head(st_drop_geometry(qua_bd_var), 20))
+```
+
+接下来输出主要因变量和自变量的描述性统计结果。首先是因变量：6个生物多样性指标，可以在地图上用点的大小表示。
+
+```{r}
+ggplot() + 
+  geom_sf(data = kyo_built, alpha = 0.5) + 
+  geom_sf(
+    data = qua_bd_var %>% 
+      select(qua_id, all_of(bd_index)) %>% 
+      mutate(across(all_of(bd_index), ~ .x/max(.x))) %>% 
+      pivot_longer(
+        cols = all_of(bd_index), names_to = "index", values_to = "val"
+      ) %>% 
+      separate(col = index, into = c("tree_shrub", "index")), 
+    aes(size = val), col = "darkgreen", alpha = 0.5
+  ) + 
+  scale_size_continuous(range = c(0, 2.5)) + 
+  facet_grid(
+    tree_shrub ~ index, labeller = labeller(
+      tree_shrub = c("tree" = "Tree", "shrub" = "Shrub"), 
+      index = c(
+        "abundance" = "Abundance", "richness" = "Richness", "shannon" = "Shannon"
+      )
+    )
+  ) + 
+  theme_bw() + 
+  theme(axis.text.x = element_text(angle = 90), legend.position = "none")
+```
+
+各生物多样性指标的数值分布如下所示：可见abundance和richness分布是比较偏态的，小数值很多。
+
+```{r}
+qua_bd_var %>% 
+  st_drop_geometry() %>% 
+  select(qua_id, all_of(bd_index)) %>% 
+  # mutate(across(all_of(bd_index), ~ .x/max(.x))) %>% 
+  pivot_longer(
+    cols = all_of(bd_index), names_to = "index", values_to = "val"
+  ) %>% 
+  separate(col = index, into = c("tree_shrub", "index")) %>% 
+  ggplot() + 
+  geom_histogram(aes(val), bins = 15) + 
+  facet_grid(
+    tree_shrub ~ index, labeller = labeller(
+      tree_shrub = c("tree" = "Tree", "shrub" = "Shrub"), 
+      index = c(
+        "abundance" = "Abundance", "richness" = "Richness", "shannon" = "Shannon"
+      )
+    ), 
+    scales = "free"
+  ) + 
+  theme_bw() + 
+  labs(x = "Index value", y = "Quadrat count")
+```
+
+植物类别的细节：乔木和灌木所涉及的物种和科属数量，以及物种最多的科如下。注意，生态调查中乔木和灌木的区分方式是外形，主要是高度和是否有主干，因此两者可能有重叠；也就是说，一个物种如果长成灌木模样就会被分入灌木，但是在另外一个样地长成乔木，则会被分为乔木。
+
+```{r}
+calc_cls(indv_tree)
+calc_cls(indv_shrub)
+```
+
+自变量包括3组：土地利用，为各个样地中各类土地利用的占比；人口变量，为各个样地中不同年龄段人口占比；地价。下面先展示各个自变量的数值分布。
+
+```{r}
+qua_bd_var %>% 
+  st_drop_geometry() %>% 
+  select(qua_id, all_of(c(land_cover_var, pop_var, "price"))) %>% 
+  # mutate(across(all_of(bd_index), ~ .x/max(.x))) %>% 
+  pivot_longer(
+    cols = all_of(c(land_cover_var, pop_var, "price")), 
+    names_to = "index", values_to = "val"
+  ) %>% 
+  mutate(
+    index = factor(index, levels = c(land_cover_var, pop_var, "price"))
+  ) %>% 
+  ggplot() + 
+  geom_histogram(aes(val), bins = 15) + 
+  facet_wrap(. ~ index, scales = "free") + 
+  theme_bw() + 
+  labs(x = "Var value", y = "Quadrat count")
+```
+
+然后是一些描述性统计：尽管由于一些自变量非正态分布，所以以中位数来描述其总体情况更合适，但是此处仍然提供中位数和平均值，以方便参考。
+
+```{r}
+qua_bd_var %>% 
+  st_drop_geometry() %>% 
+  summarise(across(
+    all_of(c(land_cover_var, pop_var, "price")), list(
+      median = ~median(., na.rm = TRUE),
+      mean = ~mean(., na.rm = TRUE)
+    )
+  )) %>% 
+  pivot_longer(
+    everything()
+  ) %>% 
+  separate(
+    name, into = c("var", "stat"), sep = "_(?=median|mean)"
+  ) %>% 
+  pivot_wider(names_from = stat, values_from = value) %>% 
+  kable()
+```
+
+## **相关分析**
+
+之前的分析直接采用了皮尔森相关分析，那是错误的，因为应该根据数值是否符合正态分布来选择相关分析方法。采用Shapiro-Wilk检验方法对各个生物多样性指数数值的正态性进行检验，发现没有任何一个指数符合正态分布；结合上面的数值分布图，我们发现大部分数值是偏态的。因此不能用皮尔森相关分析，而应该用斯皮尔曼相关分析。
+
+```{r}
+lapply(
+  bd_index, function(x) shapiro.test(qua_bd_var[[x]])$p.value
+) %>% 
+  unlist() %>% 
+  setNames(bd_index) %>% 
+  data.frame() %>% 
+  rename_with(~"shapiro_p") %>% 
+  mutate(var = rownames(.), .before = 1) %>% 
+  tibble() %>% 
+  mutate(p_sig = c(shapiro_p < 0.05))
+```
+
+从下面的相关图可以看出，一方面，直接有相关性的变量对很少；另一方面，在有相关性的变量对中，各个解释变量对各响应变量的效应比较一致。例如，底层居住用地比例（low_resi）对灌木richness、Shannon都是正相关，也就是说在不考虑其他解释变量的情况下，样地中居住用地比例越大，灌木richness、Shannon就越高；商业工业用地（com_ind）对乔木的三个多样性指数和灌木richness呈现负相关；而park主要对乔木richness和abundance显著正相关，这也很容易解释，因为公园里种的植物通常比较多，所以abundance高，但是种类不一定均匀，因此shannon不一定高。pop15_64_prop和乔木各项指标呈负相关；pop_65_74_prop和乔木richness和shannon呈负相关。
+
+我们关注的一个重点，小孩和老人的情况则是：0-14岁人口比例高的地方，乔灌木总richness比较高，这是件好事，意味着小朋友们能够接触到的植物种类较多，但是这个相关性并不显著；而高龄者相关的75岁以上人口占比和多样性的其中几个指标都是正相关，这两点说明京都市的生物多样性环境对小孩和老人都比较友好，然而这个相关性仍然是不显著的，只能后面看看GLM的结果了。至于地价，出乎意料的是，虽然不显著，但是表现出了负效应，也就是说是有可能有一种反luxury effect：地价高的地方反而生物多样性低。
+
+关于作图：可以给我提具体的颜色和样式要求。
+
+```{r}
+plot_cor(
+  st_drop_geometry(qua_bd_var)[bd_index], 
+  st_drop_geometry(qua_bd_var)[c(land_cover_var, pop_var, "price")]
+)
+```
+
+## GLM
+
+原本的分析：将各种组合的变量扔进模型，然后筛选出一个\"最佳模型\"。然而实际上我们的变量并不多，因此没有必要使用这种方法，另一方面是当时筛选出的最佳模型结果混杂，且效果提升不佳。基于这些考虑，本次分析改进了分析思路：对于每个生物多样性指数 vs. 三组自变量，直接构建3个模型：仅包含土地利用变量的模型；仅包含人口变量的模型；包含土地利用变量、人口变量、土地价格的模型。然后对比各个模型中每个自变量的表现，来判断自变量和生物多样性指数的关系，以及这种关系是否稳健。
+
+表格结果如下：
+
+```{r}
+# 输出结果。
+glm_res %>% 
+  select(resp_var_model, est_p, exp_var) %>% 
+  mutate() %>% 
+  pivot_wider(
+    id_cols = "exp_var", names_from = resp_var_model, 
+    values_from = est_p, values_fill = ""
+  ) %>% 
+  select("exp_var", paste(rep(response_vars, each = 3), c(1:3), sep = "-")) %>% 
+  kable()
+```
+
+为了方便写作，我做了个辅助图如下：各子图表示各生物多样性指数的结果，例如左上角子图表示灌木abundance三个模型的结果；每个子图中，每列表示一个模型的结果，红色表示系数为负，绿色表示系数为正，半透明表示结果不显著。可以提取出部分结论如：pop15_64比例对乔木的几个指标经常体现出负效应，这和相关性分析是一致的；公园面积占比对乔木abundance呈现正效应，这个结果可以理解，因为公园中树通常较多，但是种类未必多；住宅区中的低层住宅对乔木abundance呈现负效应，但是对灌木richness和shannon则呈现负效应，可能体现了种植面积的限制（没法种很多树）和审美需求（相比于中高层住宅需要满足绿化需求，低层住宅如一户建以灌木为主进行造园）。
+
+```{r}
+ggplot() + 
+  geom_tile(
+    data = glm_res, 
+    aes(model_id, exp_var, fill = est_cat), col = "white"
+  ) + 
+  geom_tile(
+    data = glm_res %>% filter(p_lab == ""), 
+    aes(model_id, exp_var), fill = "white", alpha = 0.8
+  ) + 
+  theme_bw() + 
+  theme(axis.text.x = element_text(angle = 90)) + 
+  facet_grid(tree_shrub ~ bd_index)
+```
