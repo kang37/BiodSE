@@ -142,6 +142,25 @@ qua_bd_var %>%
   theme_bw() + 
   labs(x = "Var value", y = "Quadrat count")
 
+# 各自变量的中位数和平均值。
+qua_bd_var %>% 
+  st_drop_geometry() %>% 
+  summarise(across(
+    all_of(c(land_cover_var, pop_var, "price")), list(
+      median = ~median(., na.rm = TRUE),
+      mean = ~mean(., na.rm = TRUE)
+    )
+  )) %>% 
+  pivot_longer(
+    everything()
+  ) %>% 
+  separate(
+    name, into = c("var", "stat"), sep = "_(?=median|mean)"
+  ) %>% 
+  pivot_wider(
+    names_from = stat, values_from = value
+  )
+
 ## Map for biodiversity indexes ----
 png(
   "data_proc/map_bd_index.png", res = 300, width = 12, height = 8, units = "cm"
