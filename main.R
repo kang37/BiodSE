@@ -188,6 +188,31 @@ ggplot() +
   theme(axis.text.x = element_text(angle = 90), legend.position = "none")
 dev.off()
 
+## Plant info ----
+# 植物的分类信息。
+spe_info <- read.csv("data_raw/plant_info.csv") %>% 
+  rename_with(~ tolower(.x))
+
+# 函数：统计乔木或灌木的物种和科属数量，以及外来种和本地种的比例。
+calc_cls <- function(indv_x) {
+  res <- spe_info %>% 
+    filter(species_lt %in% unique(indv_x$species))
+  cat(
+    "Number of species: ", nrow(res), "\n", 
+    "Number of genera: ", length(unique(res$genus)), "\n", 
+    "Number of family: ", length(unique(res$family)), "\n"
+  )
+  print(
+    res %>% 
+      group_by(family) %>% 
+      summarise(num_species = n(), .groups = "drop") %>% 
+      arrange(-n) %>% 
+      head(5)
+  )
+}
+calc_cls(indv_tree)
+calc_cls(indv_shrub)
+
 ## Biod indexes ~ factors ----
 # 统计分析部分 
 # 分析各个生物多样性指标和社会经济因素之间的关系
