@@ -62,7 +62,11 @@ plot_cor <- function(x, y) {
   # 作图表示相关性大小和是否显著，如果不显著的话，会以打叉表示
   corrplot::corrplot(
     corr = cor.res$r, method = "number", p.mat = cor.res$p, 
-    tl.cex = 0.8, number.cex = 0.6
+    tl.cex = 0.8, number.cex = 0.6, col = c("darkred", "darkgreen")
+  )
+  corrplot::corrplot(
+    corr = cor.res$r, p.mat = cor.res$p, 
+    method = "color", col = c("darkred", "darkgreen"), addgrid.col = "white"
   )
 }
 
