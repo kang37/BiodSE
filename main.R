@@ -121,35 +121,33 @@ tm_shape(kyo_built) +
   tm_polygons(col = "pop85over", border.alpha = 0, style = "kmeans") 
 
 ## Map for biodiversity indexes ----
-# Function to plot biodiversity size. 
-map_bd <- function(bd_index_x) {
-  # Breaks of the index values. 
-  index_quantile <- quantile(qua_bd_var[[bd_index_x]], na.rm = TRUE)[c(2:5)]
-  # Plot. 
-  tm_shape(kyo_built) + 
-    tm_polygons(col = "lightgrey", fill_alpha = 0.7, col_alpha = 0) + 
-    tm_shape(qua_bd_var) + 
-    tm_dots(
-      size = bd_index_x, fill_alpha = 0.7, scale = 0.5, 
-      title.size = gsub("_", " ", bd_index_x) %>% toTitleCase(),
-      sizes.legend = c(round(index_quantile))
-    ) + 
-    tm_layout(legend.position = c("left", "top"))
-}
-
-lapply(
-  bd_index, 
-  function(x) {
-    tm_shape(kyo_built) + 
-      tm_polygons() + 
-      tm_shape(qua_bd_var) +
-      tm_dots(size = x, fill = "darkgreen", fill_alpha = 0.6) + 
-      tm_layout(
-        title.size = "",
-        legend.bg.color = NA, legend.frame = FALSE, frame = FALSE
-      )
-  }
+png(
+  "data_proc/map_bd_index.png", res = 300, width = 12, height = 8, units = "cm"
 )
+ggplot() + 
+  geom_sf(data = kyo_built, alpha = 0.5) + 
+  geom_sf(
+    data = qua_bd_var %>% 
+      select(qua_id, all_of(bd_index)) %>% 
+      mutate(across(all_of(bd_index), ~ .x/max(.x))) %>% 
+      pivot_longer(
+        cols = all_of(bd_index), names_to = "index", values_to = "val"
+      ) %>% 
+      separate(col = index, into = c("tree_shrub", "index")), 
+    aes(size = val), col = "darkgreen", alpha = 0.5
+  ) + 
+  scale_size_continuous(range = c(0, 2.5)) + 
+  facet_grid(
+    tree_shrub ~ index, labeller = labeller(
+      tree_shrub = c("tree" = "Tree", "shrub" = "Shrub"), 
+      index = c(
+        "abundance" = "Abundance", "richness" = "Richness", "shannon" = "Shannon"
+      )
+    )
+  ) + 
+  theme_bw() + 
+  theme(axis.text.x = element_text(angle = 90), legend.position = "none")
+dev.off()
 
 ## Biod indexes ~ factors ----
 # 统计分析部分 
