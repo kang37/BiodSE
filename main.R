@@ -157,9 +157,7 @@ qua_bd_var %>%
   separate(
     name, into = c("var", "stat"), sep = "_(?=median|mean)"
   ) %>% 
-  pivot_wider(
-    names_from = stat, values_from = value
-  )
+  pivot_wider(names_from = stat, values_from = value)
 
 ## Map for biodiversity indexes ----
 png(
