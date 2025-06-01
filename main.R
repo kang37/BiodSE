@@ -124,6 +124,24 @@ tm_shape(kyo_built) +
   tm_shape(kyo_pop) + 
   tm_polygons(col = "pop85over", border.alpha = 0, style = "kmeans") 
 
+# 各个自变量数值的数值分布图。
+qua_bd_var %>% 
+  st_drop_geometry() %>% 
+  select(qua_id, all_of(c(land_cover_var, pop_var, "price"))) %>% 
+  # mutate(across(all_of(bd_index), ~ .x/max(.x))) %>% 
+  pivot_longer(
+    cols = all_of(c(land_cover_var, pop_var, "price")), 
+    names_to = "index", values_to = "val"
+  ) %>% 
+  mutate(
+    index = factor(index, levels = c(land_cover_var, pop_var, "price"))
+  ) %>% 
+  ggplot() + 
+  geom_histogram(aes(val), bins = 15) + 
+  facet_wrap(. ~ index, scales = "free") + 
+  theme_bw() + 
+  labs(x = "Var value", y = "Quadrat count")
+
 ## Map for biodiversity indexes ----
 png(
   "data_proc/map_bd_index.png", res = 300, width = 12, height = 8, units = "cm"
